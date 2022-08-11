@@ -1,29 +1,51 @@
+#include "main.h"
+#include "wave_header.h"
+#include <stdint.h>
 
-#include <SD.h>
-#include <SPI.h>
-#include <wave_header.h>
-
-#define MIC_PIN     (A0) //A0
-
-uint16_t Sound_Raw;
-Wave_Header_t Wave_Header;
+uint32_t Adc1Data;
+uint8_t Adc_Isr_Flag;
 
 void setup() 
 {
-    analogReadResolution(16);
-    pinMode(MIC_PIN,INPUT);
+    /* Initialize all configured peripherals */
+    MX_GPIO_Init();
+    MX_ADC1_Init();
+    MX_TIM6_Init();
+
+    HAL_ADC_Start_IT(&hadc1);
+    HAL_TIM_Base_Start(&htim6);
+
     Serial.begin(115200);
 }
 
+
 void loop() 
 {
-    Sound_Raw = analogRead(MIC_PIN);
-    Serial.print("Analog : ");
-    Serial.println(Sound_Raw);
-    delay(5);
+    delay(50);
+    Serial.print("ADC DMA Value : ");
+    Serial.println(Adc1Data);
+
 }
 
-void Create_WaveHeader(void)
+void Adc_Sampling(void)
 {
-    memcpy(Wave_Header.Riff.ChunkID,"RIFF",4);
+    static uint8_t state;
+    Adc1Data = HAL_ADC_GetValue(&hadc1);
+    state = (~state)&0x01;
+    if(state == 1)
+    {
+         HAL_GPIO_WritePin(GPIOK, GPIO_PIN_1, GPIO_PIN_RESET);  
+    }
+    else
+    {
+        HAL_GPIO_WritePin(GPIOK, GPIO_PIN_1, GPIO_PIN_SET);  
+    } 
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    if(hadc->Instance == ADC1)
+    {
+        Adc_Sampling();
+    }
 }
