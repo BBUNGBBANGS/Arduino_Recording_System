@@ -1,7 +1,7 @@
 #include "main.h"
 #include "wave_header.h"
 #include <stdint.h>
-
+#define _DEBUG // temp
 #define SOUND_DATA_SIZE           (1000)
 
 #define SOUND_RECORD_INIT           (0)
@@ -17,7 +17,6 @@ uint16_t Sound_Data[SOUND_DATA_SIZE];
 uint8_t Sound_Record_Step;
 uint8_t Sound_Data_Copy_Flag;
 uint8_t WavFile_Data[SOUND_DATA_SIZE * 100];
-uint8_t WavFile_Data2[SOUND_DATA_SIZE * 100];
 
 uint8_t Serial_data;
 
@@ -51,11 +50,9 @@ void loop()
 void Adc_Sampling(void)
 {
     Sound_Data[Sound_Data_Length%1000] = (uint16_t)HAL_ADC_GetValue(&hadc1);
-    WavFile_Data2[Sound_Data_Length*2] = HAL_ADC_GetValue(&hadc1) & 0xFF;
-    WavFile_Data2[Sound_Data_Length*2 + 1] = (HAL_ADC_GetValue(&hadc1)>>8) & 0xFF;
     Sound_Data_Length++;
 
-    if((Sound_Data_Length%1000) == 0)
+    if(((Sound_Data_Length%1000) == 0)&&(Sound_Data_Length>0))
     {
         Sound_Data_Copy_Flag = 1;
     }
@@ -105,28 +102,32 @@ void Create_WaveFile_Header(void)
 void Create_WaveFile(void)
 {
     uint8_t *Ptr = NULL;
-
+    uint8_t temp;
     switch(Sound_Record_Step)
     {
         case SOUND_RECORD_START : 
             HAL_ADC_Start_IT(&hadc1);
             Sound_Data_Length = 0;
-            Serial.println("Sound Record Step : START");
             Sound_Record_Step = SOUND_RECORD_COPY;
+            #ifdef _DEBUG
+            Serial.println("Sound Record Step : START");
+            #endif
         break;
         case SOUND_RECORD_COPY :
             if(Sound_Data_Copy_Flag == 1)
             {
-                for(uint32_t i = 0; i < (SOUND_DATA_SIZE * 2); i+=2)
+                for(uint32_t i = 0; i < SOUND_DATA_SIZE; i++)
                 {
-                    WavFile_Data[i+WAVFILE_HEADER_LENGTH+(Sound_Data_Length*2)] = Sound_Data[i]&0x00FF;
-                    WavFile_Data[i+WAVFILE_HEADER_LENGTH+(Sound_Data_Length*2)+1] = (Sound_Data[i]>>8)&0x00FF;
+                    WavFile_Data[WAVFILE_HEADER_LENGTH+((Sound_Data_Length - SOUND_DATA_SIZE)*2)+(2*i)] = (uint8_t)(Sound_Data[i]&0x00FF);
+                    WavFile_Data[WAVFILE_HEADER_LENGTH+((Sound_Data_Length - SOUND_DATA_SIZE)*2)+(2*i)+1] = (uint8_t)((Sound_Data[i]>>8)&0x00FF);             
                     Sound_Data[i] = 0;
                 }
                 Sound_Data_Copy_Flag = 0;
-
+                
+                #ifdef _DEBUG
                 Serial.print("Sound Record Step : COPY , Count : ");
                 Serial.println(Sound_Data_Length);
+                #endif
             }
 
             if(Sound_Data_Length == 22000)
@@ -140,25 +141,26 @@ void Create_WaveFile(void)
             Ptr = &WavFile.Riff.ChunkID[0];
             for(uint8_t i = 0; i<WAVFILE_HEADER_LENGTH; i++)
             {
-                WavFile_Data[i] = Ptr[i];                
-                WavFile_Data2[i] = Ptr[i];
+                WavFile_Data[i] = Ptr[i];        
             }
-            Serial.println("Sound Record Step : HEADER");
             Sound_Record_Step = SOUND_RECORD_FINISH;
+            #ifdef _DEBUG
+            Serial.println("Sound Record Step : HEADER");
+            #endif
         break;
         case SOUND_RECORD_FINISH : 
-            Serial.println("Sound Record Step : FINISH");
             Sound_Record_Step = SOUND_RECORD_INIT;
+            #ifdef _DEBUG
+            Serial.println("Sound Record Step : FINISH");
             Serial.println("Sound Record Step : INIT");
             for(uint32_t i =0;i<50000;i++)
             {
-                //Serial.print(i);
-                //Serial.print("th Data : ");
+                Serial.print(i);
+                Serial.print("th Data >> ");
                 Serial.print("Data1 : ");
-                Serial.print(WavFile_Data[i]);       
-                Serial.print(" , Data2 : ");
-                Serial.println(WavFile_Data2[i]);              
+                Serial.println(WavFile_Data[i]);       
             }
+            #endif
         break;
         default :   
             /* do nothing */
