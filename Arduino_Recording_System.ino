@@ -1,7 +1,10 @@
 #include "main.h"
 #include "wave_header.h"
+#include "SDMMCBlockDevice.h"
+#include "FATFileSystem.h"
+#include "SDRAM.h"
 #include <stdint.h>
-#define _DEBUG // temp
+
 #define SOUND_DATA_SIZE           (1000)
 
 #define SOUND_RECORD_INIT           (0)
@@ -16,9 +19,18 @@ uint32_t Sound_Data_Length;
 uint16_t Sound_Data[SOUND_DATA_SIZE];
 uint8_t Sound_Record_Step;
 uint8_t Sound_Data_Copy_Flag;
-uint8_t WavFile_Data[SOUND_DATA_SIZE * 100];
+//uint8_t WavFile_Data[SOUND_DATA_SIZE * 1000];
+uint8_t *WavFile_Data;
+uint16_t WavFile_Count;
 
 uint8_t Serial_data;
+
+SDMMCBlockDevice block_device;
+mbed::FATFileSystem fs("fs");
+FILE *myFile;
+char myFileName[] = "fs/0000.wav";  
+
+SDRAMClass mySDRAM;
 
 void setup() 
 {
@@ -28,8 +40,13 @@ void setup()
     MX_TIM6_Init();
 
     HAL_TIM_Base_Start(&htim6);
-
     Serial.begin(115200);
+    
+    Serial.println("Mounting SDCARD...");
+    int err =  fs.mount(&block_device);
+
+    mySDRAM.begin(SDRAM_START_ADDRESS);
+    WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
 }
 
 
@@ -45,6 +62,7 @@ void loop()
         }
     }
     Create_WaveFile();
+    Save_WavFile_SDCard();
 }
 
 void Adc_Sampling(void)
@@ -103,15 +121,14 @@ void Create_WaveFile(void)
 {
     uint8_t *Ptr = NULL;
     uint8_t temp;
+
     switch(Sound_Record_Step)
     {
         case SOUND_RECORD_START : 
             HAL_ADC_Start_IT(&hadc1);
             Sound_Data_Length = 0;
             Sound_Record_Step = SOUND_RECORD_COPY;
-            #ifdef _DEBUG
             Serial.println("Sound Record Step : START");
-            #endif
         break;
         case SOUND_RECORD_COPY :
             if(Sound_Data_Copy_Flag == 1)
@@ -124,46 +141,64 @@ void Create_WaveFile(void)
                 }
                 Sound_Data_Copy_Flag = 0;
                 
-                #ifdef _DEBUG
-                Serial.print("Sound Record Step : COPY , Count : ");
-                Serial.println(Sound_Data_Length);
-                #endif
+                //Serial.print("Sound Record Step : COPY , Count : ");
+                //Serial.println(Sound_Data_Length);
             }
 
-            if(Sound_Data_Length == 22000)
+            if(Sound_Data_Length == 4545)//2727273)
             {
                 Sound_Record_Step = SOUND_RECORD_HEADER;
                 HAL_ADC_Stop_IT(&hadc1);
             }
         break;
         case SOUND_RECORD_HEADER :
+            Serial.println("Sound Record Step : HEADER");
             Create_WaveFile_Header();
             Ptr = &WavFile.Riff.ChunkID[0];
             for(uint8_t i = 0; i<WAVFILE_HEADER_LENGTH; i++)
             {
                 WavFile_Data[i] = Ptr[i];        
             }
+            WavFile_Count++;
             Sound_Record_Step = SOUND_RECORD_FINISH;
-            #ifdef _DEBUG
-            Serial.println("Sound Record Step : HEADER");
-            #endif
+            Serial.println("Sound Record Step : FINISH");
+
         break;
         case SOUND_RECORD_FINISH : 
             Sound_Record_Step = SOUND_RECORD_INIT;
-            #ifdef _DEBUG
-            Serial.println("Sound Record Step : FINISH");
-            Serial.println("Sound Record Step : INIT");
-            for(uint32_t i =0;i<50000;i++)
-            {
-                Serial.print(i);
-                Serial.print("th Data >> ");
-                Serial.print("Data1 : ");
-                Serial.println(WavFile_Data[i]);       
-            }
-            #endif
         break;
         default :   
             /* do nothing */
+        break;
+    }
+}
+
+void Save_WavFile_SDCard(void)
+{
+    switch(Sound_Record_Step)
+    {
+        case SOUND_RECORD_FINISH : 
+            myFileName[3] = (WavFile_Count/1000) % 10 + '0';
+            myFileName[4] = (WavFile_Count/100) % 10 + '0';
+            myFileName[5] = (WavFile_Count/10) % 10 + '0';
+            myFileName[6] = (WavFile_Count) % 10 + '0';
+
+            myFile = fopen(myFileName, "a");
+            Serial.println("SD Card Record Start");
+            Serial.println(myFileName);
+
+            fwrite(WavFile_Data, 1, WavFile_length, myFile);
+            
+            fclose(myFile);
+            Serial.println("SD Card Record Finished");
+            for(uint32_t i=0;i<SOUND_DATA_SIZE;i++)
+            {
+                Serial.print(i);
+                Serial.print("th data : ");
+                Serial.println(WavFile_Data[i]);
+            }
+        break;
+        default : 
         break;
     }
 }
