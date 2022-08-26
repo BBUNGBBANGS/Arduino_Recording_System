@@ -4,8 +4,8 @@
 #include "FATFileSystem.h"
 #include "SDRAM.h"
 #include <stdint.h>
-//#include <SensirionI2CSfm3000.h>
-//#include <Wire.h>
+
+#define SFM3000_FLOW_THRESHOLD      (40000)
 
 #define SOUND_DATA_SIZE             (500)
 #define FLOW_DATA_SIZE              (100000)
@@ -16,8 +16,8 @@
 #define SOUND_RECORD_HEADER         (3)
 #define SOUND_RECORD_FINISH         (4)
 
-#define RECORD_TIME_SECOND          (60)  //Setting Record time <Max : 80[s]>
-#define RECORD_TIME                 (RECORD_TIME_SECOND * 1000000 / 22)
+#define RECORD_MAX_SECOND           (60)  //Setting Record time <Max : 80[s]>
+#define RECORD_MAX_TIME             (RECORD_MAX_SECOND * 1000000 / 22)
 
 #define SFM3000_I2C_ADDRESS         (0x40)
 
@@ -54,9 +54,6 @@ void setup()
     MX_TIM6_Init();
     MX_TIM16_Init();
     MX_I2C3_Init();
-
-    HAL_TIM_Base_Start(&htim6);
-    HAL_TIM_Base_Start_IT(&htim16);
     /*****************************************/
 
     /* Initialize Serial for debugging */
@@ -78,6 +75,9 @@ void setup()
     Serial.println("SDRam Allocation Finished");
     /************************************************/
 
+    HAL_TIM_Base_Start(&htim6);
+    HAL_TIM_Base_Start_IT(&htim16);
+
     /* Delay 100[ms] for SFM3000 Safe Start */
     delay(100);
     /* start Continuous Measurement */
@@ -86,17 +86,6 @@ void setup()
 
 void loop() 
 {
-    uint16_t status;
-    if(Serial.available() > 0)
-    {
-        Serial_data = Serial.read();
-        if(Serial_data == 's')
-        {
-            Sound_Record_Step = SOUND_RECORD_START;
-            Serial.println("Sound Record Start");
-            time_pre = millis();
-        }
-    }
     Create_WaveFile();
     Save_WavFile_SDCard();
 }
@@ -176,6 +165,14 @@ void Create_WaveFile(void)
 
     switch(Sound_Record_Step)
     {
+        case SOUND_RECORD_INIT:
+            if (Flow_Raw_Data >= SFM3000_FLOW_THRESHOLD)
+            {
+                Sound_Record_Step = SOUND_RECORD_START;
+                Serial.println("Sound Record Start");
+                time_pre = millis();       
+            }
+        break;
         case SOUND_RECORD_START : 
             HAL_ADC_Start_IT(&hadc1);
             Sound_Data_Length = 0;
@@ -195,7 +192,7 @@ void Create_WaveFile(void)
                 Sound_Data_Copy_Flag = 0;
             }
 
-            if(Sound_Data_Length == RECORD_TIME)
+            if((RECORD_MAX_TIME <= Sound_Data_Length) || (Flow_Raw_Data <= SFM3000_FLOW_THRESHOLD))
             {
                 Sound_Record_Step = SOUND_RECORD_HEADER;
                 HAL_ADC_Stop_IT(&hadc1);
