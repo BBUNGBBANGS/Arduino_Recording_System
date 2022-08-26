@@ -45,10 +45,13 @@ void setup()
 
     HAL_TIM_Base_Start(&htim6);
     Serial.begin(115200);
+    while(!Serial);
     
     Serial.println("SD Card Mount Start");
     int err =  fs.mount(&block_device);
     Serial.println("SD Card Mount Finished");
+
+    Read_WavFile_SdCard();
 
     Serial.println("SDRam Allocation Start");
     mySDRAM.begin(SDRAM_START_ADDRESS);
@@ -210,5 +213,35 @@ void Save_WavFile_SDCard(void)
         break;
         default : 
         break;
+    }
+}
+
+void Read_WavFile_SdCard(void)
+{
+    DIR *dir;
+    struct dirent *ent;
+  
+    Serial.println("SDCard File List : ");
+    if ((dir = opendir("/fs")) != NULL) 
+    {
+        // Print all the files and directories within directory (not recursively)
+        while ((ent = readdir (dir)) != NULL)
+        {
+            Serial.println(ent->d_name);
+            WavFile_Count++;
+        };
+        
+        if(WavFile_Count>0)
+        {
+            WavFile_Count = WavFile_Count - 1;
+        }
+
+        closedir (dir);
+    } 
+    else 
+    {
+        // Could not open directory
+        Serial.println("SDCard Open Error - Please Check SDCard And Arduino\n");
+        while(1);
     }
 }
