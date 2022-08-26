@@ -1,9 +1,9 @@
 
-#define WAVFILE_HEADER_LENGTH   (48)
+#define WAVFILE_HEADER_LENGTH   (44)
 #define FMT_SIZE            (16)
 #define AUDIO_FORMAT        (1)
 #define NUMBER_OF_CHANNEL   (1)
-#define SAMPLE_RATE         (441000)
+#define SAMPLE_RATE         (44100)
 #define BPS                 (16)
 #define BLOCK_ALIGN         (NUMBER_OF_CHANNEL * (BPS/8))
 #define BYTE_RATE           (SAMPLE_RATE * NUMBER_OF_CHANNEL * (BPS/8))

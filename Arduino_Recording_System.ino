@@ -5,7 +5,7 @@
 #include "SDRAM.h"
 #include <stdint.h>
 
-#define SOUND_DATA_SIZE           (1000)
+#define SOUND_DATA_SIZE           (500)
 
 #define SOUND_RECORD_INIT           (0)
 #define SOUND_RECORD_START          (1)
@@ -13,13 +13,15 @@
 #define SOUND_RECORD_HEADER         (3)
 #define SOUND_RECORD_FINISH         (4)
 
+#define RECORD_TIME_SECOND          (80)  //Setting Record time <Max : 80[s]>
+#define RECORD_TIME                 (RECORD_TIME_SECOND * 1000000 / 22)
+
 Wave_Header_t WavFile;
 uint32_t WavFile_length;
 uint32_t Sound_Data_Length;
 uint16_t Sound_Data[SOUND_DATA_SIZE];
 uint8_t Sound_Record_Step;
 uint8_t Sound_Data_Copy_Flag;
-//uint8_t WavFile_Data[SOUND_DATA_SIZE * 1000];
 uint8_t *WavFile_Data;
 uint16_t WavFile_Count;
 
@@ -32,6 +34,8 @@ char myFileName[] = "fs/0000.wav";
 
 SDRAMClass mySDRAM;
 
+uint32_t milis_pre,milis_new;
+
 void setup() 
 {
     /* Initialize all configured peripherals */
@@ -42,11 +46,14 @@ void setup()
     HAL_TIM_Base_Start(&htim6);
     Serial.begin(115200);
     
-    Serial.println("Mounting SDCARD...");
+    Serial.println("SD Card Mount Start");
     int err =  fs.mount(&block_device);
+    Serial.println("SD Card Mount Finished");
 
+    Serial.println("SDRam Allocation Start");
     mySDRAM.begin(SDRAM_START_ADDRESS);
     WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
+    Serial.println("SDRam Allocation Finished");
 }
 
 
@@ -59,6 +66,7 @@ void loop()
         {
             Sound_Record_Step = SOUND_RECORD_START;
             Serial.println("Sound Record Start");
+            milis_pre = millis();
         }
     }
     Create_WaveFile();
@@ -67,10 +75,10 @@ void loop()
 
 void Adc_Sampling(void)
 {
-    Sound_Data[Sound_Data_Length%1000] = (uint16_t)HAL_ADC_GetValue(&hadc1);
+    Sound_Data[Sound_Data_Length%SOUND_DATA_SIZE] = (uint16_t)HAL_ADC_GetValue(&hadc1);
     Sound_Data_Length++;
 
-    if(((Sound_Data_Length%1000) == 0)&&(Sound_Data_Length>0))
+    if(((Sound_Data_Length%SOUND_DATA_SIZE) == 0)&&(Sound_Data_Length>0))
     {
         Sound_Data_Copy_Flag = 1;
     }
@@ -145,7 +153,7 @@ void Create_WaveFile(void)
                 //Serial.println(Sound_Data_Length);
             }
 
-            if(Sound_Data_Length == 4545)//2727273)
+            if(Sound_Data_Length == 3636364)
             {
                 Sound_Record_Step = SOUND_RECORD_HEADER;
                 HAL_ADC_Stop_IT(&hadc1);
@@ -162,7 +170,10 @@ void Create_WaveFile(void)
             WavFile_Count++;
             Sound_Record_Step = SOUND_RECORD_FINISH;
             Serial.println("Sound Record Step : FINISH");
-
+            milis_new = millis();
+            Serial.print("Record total time : ");
+            Serial.print(milis_new - milis_pre);
+            Serial.println("[ms]");
         break;
         case SOUND_RECORD_FINISH : 
             Sound_Record_Step = SOUND_RECORD_INIT;
@@ -175,9 +186,11 @@ void Create_WaveFile(void)
 
 void Save_WavFile_SDCard(void)
 {
+    uint32_t millis_pre,millis_new;
     switch(Sound_Record_Step)
     {
         case SOUND_RECORD_FINISH : 
+
             myFileName[3] = (WavFile_Count/1000) % 10 + '0';
             myFileName[4] = (WavFile_Count/100) % 10 + '0';
             myFileName[5] = (WavFile_Count/10) % 10 + '0';
@@ -186,17 +199,14 @@ void Save_WavFile_SDCard(void)
             myFile = fopen(myFileName, "a");
             Serial.println("SD Card Record Start");
             Serial.println(myFileName);
-
+            millis_pre = millis();
             fwrite(WavFile_Data, 1, WavFile_length, myFile);
-            
+            millis_new = millis();
             fclose(myFile);
             Serial.println("SD Card Record Finished");
-            for(uint32_t i=0;i<SOUND_DATA_SIZE;i++)
-            {
-                Serial.print(i);
-                Serial.print("th data : ");
-                Serial.println(WavFile_Data[i]);
-            }
+            Serial.print("SD Card Data Write time : ");
+            Serial.print(millis_new - millis_pre);
+            Serial.println("[ms]");
         break;
         default : 
         break;
