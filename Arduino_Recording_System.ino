@@ -58,7 +58,7 @@ void setup()
 
     /* Initialize Serial for debugging */
     Serial.begin(115200);
-    while(!Serial);
+    //while(!Serial);
     /***********************************/
 
     /* SD Card Mount and Read file list */
