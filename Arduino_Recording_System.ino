@@ -5,8 +5,10 @@
 #include "SDRAM.h"
 #include <stdint.h>
 
+/* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)
 
+/**** define 수정 금지 ****/
 #define SOUND_DATA_SIZE             (500)
 #define FLOW_DATA_SIZE              (100000)
 
@@ -20,6 +22,7 @@
 #define RECORD_MAX_TIME             (RECORD_MAX_SECOND * 1000000 / 22)
 
 #define SFM3000_I2C_ADDRESS         (0x40)
+/************************/
 
 Wave_Header_t WavFile;
 uint32_t WavFile_length;
