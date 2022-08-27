@@ -4,8 +4,11 @@
 #include "FATFileSystem.h"
 #include "SDRAM.h"
 #include <stdint.h>
+#include <WiFi.h>
 
 #define SFM3000_FLOW_THRESHOLD      (40000)
+#define WIFI_SSID                   "BBtest"
+#define WIFI_PASSWORD               "jisu8730"
 
 #define SOUND_DATA_SIZE             (500)
 #define FLOW_DATA_SIZE              (100000)
@@ -45,8 +48,14 @@ uint16_t Flow_Data_Length;
 
 uint32_t time_pre,time_new;
 
+char ssid[] = WIFI_SSID;        // your network SSID (name)
+char pass[] = WIFI_PASSWORD;        // your network password (use for WPA, or use as key for WEP)
+char server[] = "example.com";       // host name for example.com (using DNS)
+WiFiClient client;
+
 void setup() 
 {
+    uint8_t status;
     uint8_t tx_buf[2] = {0x10,0x00};
     /* Initialize all configured peripherals */
     MX_GPIO_Init();
@@ -58,8 +67,33 @@ void setup()
 
     /* Initialize Serial for debugging */
     Serial.begin(115200);
-    //while(!Serial);
+    while(!Serial);
     /***********************************/
+
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    // attempt to connect to Wifi network:
+    while (status != WL_CONNECTED) 
+    {
+        Serial.print("..");
+        // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+        status = WiFi.begin(ssid, pass);
+        delay(100);
+    }
+    Serial.println("Connected to WiFi");
+    printWifiStatus();
+    
+    Serial.println("\nStarting connection to server...");
+    if (client.connect(server, 80)) 
+    {
+        Serial.println("connected to server");
+        // Make a HTTP request:
+        client.println("GET /index.html HTTP/1.1");
+        client.print("Host: ");
+        client.println(server);
+        client.println("Connection: close");
+        client.println();
+    }
 
     /* SD Card Mount and Read file list */
     Serial.println("SD Card Mount Start");
@@ -288,4 +322,22 @@ void Read_WavFile_SdCard(void)
         Serial.println("SDCard Open Error - Please Check SDCard And Arduino\n");
         while(1);
     }
+}
+
+void printWifiStatus() 
+{
+    // print the SSID of the network you're attached to:
+    Serial.print("SSID: ");
+    Serial.println(WiFi.SSID());
+
+    // print your board's IP address:
+    IPAddress ip = WiFi.localIP();
+    Serial.print("IP Address: ");
+    Serial.println(ip);
+
+    // print the received signal strength:
+    long rssi = WiFi.RSSI();
+    Serial.print("signal strength (RSSI):");
+    Serial.print(rssi);
+    Serial.println(" dBm");
 }
