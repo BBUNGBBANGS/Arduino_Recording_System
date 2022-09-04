@@ -5,6 +5,7 @@
 #include "SDRAM.h"
 #include <stdint.h>
 
+/* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)
 #define LOWPASS_FILTER_FREQUENCY    (10000)//[Hz]
 
@@ -21,6 +22,7 @@
 #define RECORD_MAX_TIME             (RECORD_MAX_SECOND * 1000000 / 22)
 
 #define SFM3000_I2C_ADDRESS         (0x40)
+/************************/
 
 #define PI (3.141592f)
 #define TS (0.000022f)
@@ -63,7 +65,7 @@ void setup()
 
     /* Initialize Serial for debugging */
     Serial.begin(115200);
-    while(!Serial);
+    //while(!Serial);
     /***********************************/
 
     /* SD Card Mount and Read file list */
