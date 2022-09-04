@@ -6,8 +6,9 @@
 #include <stdint.h>
 
 #define SFM3000_FLOW_THRESHOLD      (40000)
+#define LOWPASS_FILTER_FREQUENCY    (10000)//[Hz]
 
-#define SOUND_DATA_SIZE             (500)
+#define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
 
 #define SOUND_RECORD_INIT           (0)
@@ -20,6 +21,10 @@
 #define RECORD_MAX_TIME             (RECORD_MAX_SECOND * 1000000 / 22)
 
 #define SFM3000_I2C_ADDRESS         (0x40)
+
+#define PI (3.141592f)
+#define TS (0.000022f)
+#define TAU ((float)(1.0f/LOWPASS_FILTER_FREQUENCY/2.0f/PI))
 
 Wave_Header_t WavFile;
 uint32_t WavFile_length;
@@ -92,7 +97,13 @@ void loop()
 
 void Adc_Sampling(void)
 {
-    Sound_Data[Sound_Data_Length%SOUND_DATA_SIZE] = (uint16_t)HAL_ADC_GetValue(&hadc1);
+    uint32_t idx;
+    uint16_t AdcValue;
+    static uint16_t Sound_Data_Old;
+    idx = Sound_Data_Length%SOUND_DATA_SIZE;
+    AdcValue = (uint16_t)HAL_ADC_GetValue(&hadc1);
+    Sound_Data[idx] = (uint16_t)LowPassFilter(AdcValue,Sound_Data_Old,TS,TAU);
+    Sound_Data_Old = Sound_Data[idx];
     Sound_Data_Length++;
 
     if(((Sound_Data_Length%SOUND_DATA_SIZE) == 0)&&(Sound_Data_Length>0))
@@ -277,7 +288,7 @@ void Read_WavFile_SdCard(void)
         
         if(WavFile_Count>0)
         {
-            WavFile_Count = WavFile_Count - 1;
+            WavFile_Count = (WavFile_Count - 1)/2;
         }
 
         closedir (dir);
@@ -288,4 +299,11 @@ void Read_WavFile_SdCard(void)
         Serial.println("SDCard Open Error - Please Check SDCard And Arduino\n");
         while(1);
     }
+}
+
+float LowPassFilter(float x_k,float y_kml,float Ts,float tau)
+{
+    float y_k;
+    y_k = ((tau * y_kml) + (Ts * x_k))/(Ts + tau);
+    return y_k;
 }
