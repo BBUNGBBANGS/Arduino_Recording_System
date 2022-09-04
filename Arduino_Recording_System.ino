@@ -5,9 +5,11 @@
 #include "SDRAM.h"
 #include <stdint.h>
 
+#define _TEST
+
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
-#define SFM3000_FLOW_THRESHOLD      (40000)
-#define LOWPASS_FILTER_FREQUENCY    (10000)//[Hz]
+#define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
+#define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
 
 #define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
@@ -49,6 +51,7 @@ SDRAMClass mySDRAM;
 uint16_t Flow_Raw_Data;
 uint16_t Flow_Data[FLOW_DATA_SIZE];
 uint16_t Flow_Data_Length;
+uint8_t Flow_Data_Read_Flag;
 
 uint32_t time_pre,time_new;
 
@@ -65,7 +68,7 @@ void setup()
 
     /* Initialize Serial for debugging */
     Serial.begin(115200);
-    //while(!Serial);
+    while(!Serial);
     /***********************************/
 
     /* SD Card Mount and Read file list */
@@ -93,6 +96,21 @@ void setup()
 
 void loop() 
 {
+    #ifdef _TEST
+    if(Serial.available() > 0)
+    {
+        Serial_data = Serial.read();
+        if(Serial_data == 's')
+        {
+            Flow_Raw_Data = SFM3000_FLOW_THRESHOLD + 1;
+        }
+        if(Serial_data == 'p')
+        {
+            Flow_Raw_Data = 0;
+        }
+    }
+    #endif
+    SFM3000_Read_Data();
     Create_WaveFile();
     Save_WavFile_SDCard();
 }
@@ -128,14 +146,28 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     if(htim->Instance == TIM16)
     {
+        Flow_Data_Read_Flag = 1;
+    }
+}
+
+void SFM3000_Read_Data(void)
+{
+    uint8_t rx_buf[3] = {0,};
+
+    if(Flow_Data_Read_Flag == 1)
+    {
         HAL_I2C_Master_Receive(&hi2c3,SFM3000_I2C_ADDRESS<<1,rx_buf,3,1);
+        #ifdef _TEST
         Flow_Raw_Data = rx_buf[1] | (rx_buf[0] << 8);
+        #endif
         if(SOUND_RECORD_COPY == Sound_Record_Step)
         {
             Flow_Data[Flow_Data_Length] = Flow_Raw_Data;
             Flow_Data_Length++;
-        }
+        }    
+        Flow_Data_Read_Flag = 0;
     }
+
 }
 
 void Create_WaveFile_Header(void)
@@ -207,6 +239,9 @@ void Create_WaveFile(void)
 
             if((RECORD_MAX_TIME <= Sound_Data_Length) || (Flow_Raw_Data <= SFM3000_FLOW_THRESHOLD))
             {
+                #ifdef _TEST
+                Flow_Raw_Data = 0;
+                #endif
                 Sound_Record_Step = SOUND_RECORD_HEADER;
                 HAL_ADC_Stop_IT(&hadc1);
             }

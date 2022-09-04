@@ -26,7 +26,6 @@ I2C_HandleTypeDef hi2c3;
 
 TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim16;
-
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -139,7 +138,7 @@ void MX_ADC1_Init(void)
      */
   	sConfig.Channel = ADC_CHANNEL_0;
     sConfig.Rank = ADC_REGULAR_RANK_1;
-    sConfig.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
+    sConfig.SamplingTime = ADC_SAMPLETIME_16CYCLES_5;
     sConfig.SingleDiff = ADC_SINGLE_ENDED;
     sConfig.OffsetNumber = ADC_OFFSET_NONE;
     sConfig.Offset = 0;
@@ -258,7 +257,7 @@ void MX_TIM16_Init(void)
   htim16.Instance = TIM16;
   htim16.Init.Prescaler = 199;
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 1000;
+  htim16.Init.Period = 50000; //SFM3000 Read Timer [us]
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
