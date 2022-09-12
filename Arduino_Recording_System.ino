@@ -9,6 +9,7 @@
 
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
+#define SFM3000_SAMPLING_TIME       (50)//[ms]
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
 
 #define SOUND_DATA_SIZE             (100)
@@ -142,11 +143,16 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    uint8_t rx_buf[3] = {0,};
+    static uint8_t timer_1ms;
 
     if(htim->Instance == TIM16)
     {
-        Flow_Data_Read_Flag = 1;
+        timer_1ms++;
+        if(timer_1ms>=SFM3000_SAMPLING_TIME)
+        {
+            timer_1ms = 0;
+            Flow_Data_Read_Flag = 1;
+        }
     }
 }
 
