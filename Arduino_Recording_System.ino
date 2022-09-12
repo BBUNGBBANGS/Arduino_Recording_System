@@ -1,7 +1,7 @@
 #include "main.h"
 #include "wave_header.h"
-#include "SDMMCBlockDevice.h"
-#include "FATFileSystem.h"
+#include <SPI.h>
+#include <SD.h>
 #include "SDRAM.h"
 #include <stdint.h>
 
@@ -42,11 +42,9 @@ uint16_t WavFile_Count;
 
 uint8_t Serial_data;
 
-SDMMCBlockDevice block_device;
-mbed::FATFileSystem fs("fs");
-FILE *myFile;
-char WavFileName[] = "fs/0000.wav";  
-char FlowFileName[] = "fs/0000.txt";  
+File myFile;
+char WavFileName[] = "0001.wav";  
+char FlowFileName[] = "0001.txt";  
 
 SDRAMClass mySDRAM;
 uint16_t Flow_Raw_Data;
@@ -59,6 +57,8 @@ uint32_t time_pre,time_new;
 void setup() 
 {
     uint8_t tx_buf[2] = {0x10,0x00};
+    pinMode(7, OUTPUT);
+    digitalWrite(7, HIGH);
     /* Initialize all configured peripherals */
     MX_GPIO_Init();
     MX_ADC1_Init();
@@ -74,7 +74,11 @@ void setup()
 
     /* SD Card Mount and Read file list */
     Serial.println("SD Card Mount Start");
-    int err =  fs.mount(&block_device);
+    if (!SD.begin(7)) 
+    {
+        Serial.println("SD Card initialization failed!");
+        while (1);
+    }
     Serial.println("SD Card Mount Finished");
     Read_WavFile_SdCard();
     /************************************/
@@ -91,8 +95,10 @@ void setup()
 
     /* Delay 100[ms] for SFM3000 Safe Start */
     delay(100);
-    /* start Continuous Measurement */
+    /* start Continuous Measurement */       
+    #ifndef _TEST
     HAL_I2C_Master_Transmit(&hi2c3,SFM3000_I2C_ADDRESS<<1,tx_buf,2,10);
+    #endif
 }
 
 void loop() 
@@ -162,8 +168,8 @@ void SFM3000_Read_Data(void)
 
     if(Flow_Data_Read_Flag == 1)
     {
+        #ifndef _TEST
         HAL_I2C_Master_Receive(&hi2c3,SFM3000_I2C_ADDRESS<<1,rx_buf,3,1);
-        #ifdef _TEST
         Flow_Raw_Data = rx_buf[1] | (rx_buf[0] << 8);
         #endif
         if(SOUND_RECORD_COPY == Sound_Record_Step)
@@ -279,33 +285,34 @@ void Create_WaveFile(void)
 
 void Save_WavFile_SDCard(void)
 {
-    uint32_t millis_pre,millis_new;
+    String temp = "";
     switch(Sound_Record_Step)
     {
         case SOUND_RECORD_FINISH : 
             Serial.println("SD Card Record Start");
 
-            WavFileName[3] = (WavFile_Count/1000) % 10 + '0';
-            WavFileName[4] = (WavFile_Count/100) % 10 + '0';
-            WavFileName[5] = (WavFile_Count/10) % 10 + '0';
-            WavFileName[6] = (WavFile_Count) % 10 + '0';
-            myFile = fopen(WavFileName, "a");
+            WavFileName[0] = (WavFile_Count/1000) % 10 + '0';
+            WavFileName[1] = (WavFile_Count/100) % 10 + '0';
+            WavFileName[2] = (WavFile_Count/10) % 10 + '0';
+            WavFileName[3] = (WavFile_Count) % 10 + '0';
+            myFile = SD.open(WavFileName,FILE_WRITE);
             Serial.println(WavFileName);
-            fwrite(WavFile_Data, 1, WavFile_length, myFile);
-            fclose(myFile);
+            myFile.write(WavFile_Data,WavFile_length);
+            myFile.close();
 
-            FlowFileName[3] = (WavFile_Count/1000) % 10 + '0';
-            FlowFileName[4] = (WavFile_Count/100) % 10 + '0';
-            FlowFileName[5] = (WavFile_Count/10) % 10 + '0';
-            FlowFileName[6] = (WavFile_Count) % 10 + '0';
-            myFile = fopen(FlowFileName, "a");
+            FlowFileName[0] = (WavFile_Count/1000) % 10 + '0';
+            FlowFileName[1] = (WavFile_Count/100) % 10 + '0';
+            FlowFileName[2] = (WavFile_Count/10) % 10 + '0';
+            FlowFileName[3] = (WavFile_Count) % 10 + '0';
+            myFile = SD.open(FlowFileName,FILE_WRITE);
             Serial.println(FlowFileName);
-            fprintf(myFile,"< SFM3000 Flow Sensor Raw Data >\n");
+            myFile.print("< SFM3000 Flow Sensor Raw Data >\n");
             for(uint16_t i = 0; i < Flow_Data_Length; i++)
             {
-                fprintf(myFile,"%d\n",Flow_Data[i]);
+                temp = String(Flow_Data[i]);
+                myFile.println(temp);
             }
-            fclose(myFile);
+            myFile.close();
 
             Serial.println("SD Card Record Finished");
         break;
@@ -316,32 +323,40 @@ void Save_WavFile_SDCard(void)
 
 void Read_WavFile_SdCard(void)
 {
-    DIR *dir;
-    struct dirent *ent;
-  
-    Serial.println("SDCard File List : ");
-    if ((dir = opendir("/fs")) != NULL) 
+    char wavfile_name[] = "0001.wav";
+    char flowfile_name[] = "0001.txt";
+    Serial.println("/***************************************************/");
+    Serial.println("SD Card File List : ");
+    while (true) 
     {
-        // Print all the files and directories within directory (not recursively)
-        while ((ent = readdir (dir)) != NULL)
+        WavFile_Count++;
+        wavfile_name[0] = (WavFile_Count/1000) % 10 + '0';
+        wavfile_name[1] = (WavFile_Count/100) % 10 + '0';
+        wavfile_name[2] = (WavFile_Count/10) % 10 + '0';
+        wavfile_name[3] = (WavFile_Count) % 10 + '0';
+        flowfile_name[0] = (WavFile_Count/1000) % 10 + '0';
+        flowfile_name[1] = (WavFile_Count/100) % 10 + '0';
+        flowfile_name[2] = (WavFile_Count/10) % 10 + '0';
+        flowfile_name[3] = (WavFile_Count) % 10 + '0';
+        if(!(SD.exists(wavfile_name)))
         {
-            Serial.println(ent->d_name);
-            WavFile_Count++;
-        };
-        
-        if(WavFile_Count>0)
-        {
-            WavFile_Count = (WavFile_Count - 1)/2;
+            if(WavFile_Count == 1)
+            {
+                Serial.println("No File in SD Card");
+            }
+            Serial.println("/***************************************************/");
+            break;
         }
-
-        closedir (dir);
-    } 
-    else 
-    {
-        // Could not open directory
-        Serial.println("SDCard Open Error - Please Check SDCard And Arduino\n");
-        while(1);
+        Serial.println(wavfile_name);
+        Serial.println(flowfile_name);
     }
+
+    if(WavFile_Count>0)
+    {
+        WavFile_Count = WavFile_Count-1;
+    }
+    
+    myFile.close();
 }
 
 float LowPassFilter(float x_k,float y_kml,float Ts,float tau)
