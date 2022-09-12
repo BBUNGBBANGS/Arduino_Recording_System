@@ -4,6 +4,7 @@
 #include <SD.h>
 #include "SDRAM.h"
 #include <stdint.h>
+#include <WiFi.h>
 
 #define _TEST
 
@@ -11,6 +12,8 @@
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
 #define SFM3000_SAMPLING_TIME       (50)//[ms]
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
+#define WIFI_SSID                   "BBUNGBBANGWORLD"
+#define WIFI_PASSWORD               "jisu8730"
 
 #define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
@@ -54,6 +57,12 @@ uint8_t Flow_Data_Read_Flag;
 
 uint32_t time_pre,time_new;
 
+char ssid[] = WIFI_SSID;        // your network SSID (name)
+char pass[] = WIFI_PASSWORD;        // your network password (use for WPA, or use as key for WEP)
+char server[] = "example.com";       // host name for example.com (using DNS)
+int status = WL_IDLE_STATUS;
+WiFiClient client;
+
 void setup() 
 {
     uint8_t tx_buf[2] = {0x10,0x00};
@@ -89,6 +98,38 @@ void setup()
     WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
     Serial.println("SDRam Allocation Finished");
     /************************************************/
+
+    // check for the WiFi module:
+    if (WiFi.status() == WL_NO_SHIELD) 
+    {
+        Serial.println("Communication with WiFi module failed!");
+        // don't continue
+        while (true);
+    }
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    // attempt to connect to Wifi network:
+    while (status != WL_CONNECTED) 
+    {
+        Serial.print("..");
+        // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+        status = WiFi.begin(ssid, pass);
+        delay(100);
+    }
+    Serial.println("Connected to WiFi");
+    printWifiStatus();
+    
+    Serial.println("\nStarting connection to server...");
+    if (client.connect(server, 80)) 
+    {
+        Serial.println("connected to server");
+        // Make a HTTP request:
+        client.println("GET /index.html HTTP/1.1");
+        client.print("Host: ");
+        client.println(server);
+        client.println("Connection: close");
+        client.println();
+    }
 
     HAL_TIM_Base_Start(&htim6);
     HAL_TIM_Base_Start_IT(&htim16);
@@ -218,7 +259,6 @@ void Create_WaveFile_Header(void)
 void Create_WaveFile(void)
 {
     uint8_t *Ptr = NULL;
-    uint8_t temp;
 
     switch(Sound_Record_Step)
     {
@@ -364,4 +404,22 @@ float LowPassFilter(float x_k,float y_kml,float Ts,float tau)
     float y_k;
     y_k = ((tau * y_kml) + (Ts * x_k))/(Ts + tau);
     return y_k;
+}
+
+void printWifiStatus() 
+{
+    // print the SSID of the network you're attached to:
+    Serial.print("SSID: ");
+    Serial.println(WiFi.SSID());
+
+    // print your board's IP address:
+    IPAddress ip = WiFi.localIP();
+    Serial.print("IP Address: ");
+    Serial.println(ip);
+
+    // print the received signal strength:
+    long rssi = WiFi.RSSI();
+    Serial.print("signal strength (RSSI):");
+    Serial.print(rssi);
+    Serial.println(" dBm");
 }
