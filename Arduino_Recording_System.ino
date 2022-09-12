@@ -5,6 +5,7 @@
 #include "SDRAM.h"
 #include <stdint.h>
 #include <WiFi.h>
+//#include <Firebase.h>
 
 #define _TEST
 
@@ -14,6 +15,11 @@
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
 #define WIFI_SSID                   "BBUNGBBANGWORLD"
 #define WIFI_PASSWORD               "jisu8730"
+#define API_KEY                     "REPLACE_WITH_YOUR_FIREBASE_PROJECT_API_KEY"
+#define USER_EMAIL                  "REPLACE_WITH_THE_AUTHORIZED_USER_EMAIL"
+#define USER_PASSWORD               "REPLACE_WITH_THE_AUTHORIZED_USER_PASSWORD"
+#define STORAGE_BUCKET_ID           "REPLACE_WITH_YOUR_STORAGE_BUCKET_ID"
+
 
 #define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
@@ -30,9 +36,9 @@
 #define SFM3000_I2C_ADDRESS         (0x40)
 /************************/
 
-#define PI (3.141592f)
-#define TS (0.000022f)
-#define TAU ((float)(1.0f/LOWPASS_FILTER_FREQUENCY/2.0f/PI))
+#define FILTER_PI (3.141592f)
+#define FILTER_TS (0.000022f)
+#define FILTER_TAU ((float)(1.0f/LOWPASS_FILTER_FREQUENCY/2.0f/FILTER_PI))
 
 Wave_Header_t WavFile;
 uint32_t WavFile_length;
@@ -170,7 +176,7 @@ void Adc_Sampling(void)
     static uint16_t Sound_Data_Old;
     idx = Sound_Data_Length%SOUND_DATA_SIZE;
     AdcValue = (uint16_t)HAL_ADC_GetValue(&hadc1);
-    Sound_Data[idx] = (uint16_t)LowPassFilter(AdcValue,Sound_Data_Old,TS,TAU);
+    Sound_Data[idx] = (uint16_t)LowPassFilter(AdcValue,Sound_Data_Old,FILTER_TS,FILTER_TAU);
     Sound_Data_Old = Sound_Data[idx];
     Sound_Data_Length++;
 
