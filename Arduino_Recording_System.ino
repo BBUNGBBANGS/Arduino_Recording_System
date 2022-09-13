@@ -5,9 +5,11 @@
 #include "SDRAM.h"
 #include <stdint.h>
 #include <WiFi.h>
-//#include <Firebase.h>
+#include <Firebase_ESP_Client.h>
+#include <addons/TokenHelper.h>
 
 #define _TEST
+#define ARDUINO_ARCH_STM32
 
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
@@ -15,10 +17,10 @@
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
 #define WIFI_SSID                   "BBUNGBBANGWORLD"
 #define WIFI_PASSWORD               "jisu8730"
-#define API_KEY                     "REPLACE_WITH_YOUR_FIREBASE_PROJECT_API_KEY"
-#define USER_EMAIL                  "REPLACE_WITH_THE_AUTHORIZED_USER_EMAIL"
-#define USER_PASSWORD               "REPLACE_WITH_THE_AUTHORIZED_USER_PASSWORD"
-#define STORAGE_BUCKET_ID           "REPLACE_WITH_YOUR_STORAGE_BUCKET_ID"
+#define API_KEY                     "AIzaSyBeo4HXO8sfIgRCv_cx8ZL9H_OAuBhTqsU"
+#define USER_EMAIL                  "susjs90@gmail.com"
+#define USER_PASSWORD               "jisu8730"
+#define STORAGE_BUCKET_ID           "test-eb56a.appspot.com"
 
 
 #define SOUND_DATA_SIZE             (100)
@@ -69,6 +71,12 @@ char server[] = "example.com";       // host name for example.com (using DNS)
 int status = WL_IDLE_STATUS;
 WiFiClient client;
 
+//Define Firebase Data objects
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig configF;
+#define FILE_PHOTO "/data/photo.jpg"
+
 void setup() 
 {
     uint8_t tx_buf[2] = {0x10,0x00};
@@ -87,58 +95,34 @@ void setup()
     while(!Serial);
     /***********************************/
 
-    /* SD Card Mount and Read file list */
-    Serial.println("SD Card Mount Start");
-    if (!SD.begin(7)) 
-    {
-        Serial.println("SD Card initialization failed!");
-        while (1);
-    }
-    Serial.println("SD Card Mount Finished");
-    Read_WavFile_SdCard();
-    /************************************/
+    /* Initialize SD Card */
+    SD_Card_Init();
+    /**********************/
 
-    /* External SDRAM Allocation for Record wavFile */
-    Serial.println("SDRam Allocation Start");
-    mySDRAM.begin(SDRAM_START_ADDRESS);
-    WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
-    Serial.println("SDRam Allocation Finished");
-    /************************************************/
+    /* Initialize SD Ram */
+    SD_Ram_Init();
+    /**********************/
 
-    // check for the WiFi module:
-    if (WiFi.status() == WL_NO_SHIELD) 
-    {
-        Serial.println("Communication with WiFi module failed!");
-        // don't continue
-        while (true);
-    }
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
-    // attempt to connect to Wifi network:
-    while (status != WL_CONNECTED) 
-    {
-        Serial.print("..");
-        // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-        status = WiFi.begin(ssid, pass);
-        delay(100);
-    }
-    Serial.println("Connected to WiFi");
-    printWifiStatus();
-    
-    Serial.println("\nStarting connection to server...");
-    if (client.connect(server, 80)) 
-    {
-        Serial.println("connected to server");
-        // Make a HTTP request:
-        client.println("GET /index.html HTTP/1.1");
-        client.print("Host: ");
-        client.println(server);
-        client.println("Connection: close");
-        client.println();
-    }
+    /* Initialize WiFi */
+    WiFi_Init();
+    /*******************/
 
+    /* Initialize Firebase */
+    Firebase_Init();
+    /*******************/
+    configF.api_key = API_KEY;
+    //Assign the user sign in credentials
+    auth.user.email = USER_EMAIL;
+    auth.user.password = USER_PASSWORD;
+    //Assign the callback function for the long running token generation task
+    configF.token_status_callback = tokenStatusCallback; //see addons/TokenHelper.h
+
+    Firebase.begin(&configF, &auth);
+    Firebase.reconnectWiFi(true);
+    /* Start Timer for trigger adc & I2C */
     HAL_TIM_Base_Start(&htim6);
     HAL_TIM_Base_Start_IT(&htim16);
+    /*************************************/
 
     /* Delay 100[ms] for SFM3000 Safe Start */
     delay(100);
@@ -167,6 +151,89 @@ void loop()
     SFM3000_Read_Data();
     Create_WaveFile();
     Save_WavFile_SDCard();
+}
+
+void SD_Card_Init(void)
+{
+    /* SD Card Mount and Read file list */
+    Serial.println("SD Card Mount Start");
+    if (!SD.begin(7)) 
+    {
+        Serial.println("SD Card initialization failed!");
+        while (1);
+    }
+    Serial.println("SD Card Mount Finished");
+    Read_WavFile_SdCard();
+    /************************************/
+}
+
+void SD_Ram_Init(void)
+{
+    /* External SDRAM Allocation for Record wavFile */
+    Serial.println("SDRam Allocation Start");
+    mySDRAM.begin(SDRAM_START_ADDRESS);
+    WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
+    Serial.println("SDRam Allocation Finished");
+}
+
+void WiFi_Init(void)
+{
+    /* check for the WiFi module */
+    if (WiFi.status() == WL_NO_SHIELD) 
+    {
+        Serial.println("Communication with WiFi module failed!");
+        while (true);
+    }
+
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+
+    /* attempt to connect to Wifi network */
+    while (status != WL_CONNECTED) 
+    {
+        Serial.print("..");
+        /* Connect to WPA/WPA2 network. Change this line if using open or WEP network */
+        status = WiFi.begin(ssid, pass);
+        delay(100);
+    }
+    Serial.println("Connected to WiFi");
+    printWifiStatus();
+    
+    Serial.println("\nStarting connection to server...");
+    if (client.connect(server, 80)) 
+    {
+        Serial.println("connected to server");
+        /* Make a HTTP request */
+        client.println("GET /index.html HTTP/1.1");
+        client.print("Host: ");
+        client.println(server);
+        client.println("Connection: close");
+        client.println();
+    }
+}
+
+void Firebase_Init(void)
+{
+    //Firebase.begin();
+    //Firebase.reconnectWiFi();
+}
+
+void printWifiStatus(void) 
+{
+    /* print the SSID of the network you're attached to */
+    Serial.print("SSID: ");
+    Serial.println(WiFi.SSID());
+
+    /* print your board's IP address */
+    IPAddress ip = WiFi.localIP();
+    Serial.print("IP Address: ");
+    Serial.println(ip);
+
+    /* print the received signal strength */
+    long rssi = WiFi.RSSI();
+    Serial.print("signal strength (RSSI):");
+    Serial.print(rssi);
+    Serial.println(" dBm");
 }
 
 void Adc_Sampling(void)
@@ -361,6 +428,21 @@ void Save_WavFile_SDCard(void)
             myFile.close();
 
             Serial.println("SD Card Record Finished");
+            if (Firebase.ready())
+            {
+                Serial.print("Uploading files... ");
+
+                //MIME type should be valid to avoid the download problem.
+                //The file systems for flash and SD/SDMMC can be changed in FirebaseFS.h.
+                if (Firebase.Storage.upload(&fbdo, STORAGE_BUCKET_ID /* Firebase Storage bucket id */, FILE_PHOTO /* path to local file */, mem_storage_type_flash /* memory storage type, mem_storage_type_flash and mem_storage_type_sd */, FILE_PHOTO /* path of remote file stored in the bucket */, "image/jpeg" /* mime type */))
+                {
+                    Serial.println("\nDownload URL: %s\n");//, fbdo.downloadURL().c_str());
+                }
+                else
+                {
+                    Serial.println(fbdo.errorReason());
+                }
+            }
         break;
         default : 
         break;
@@ -410,22 +492,4 @@ float LowPassFilter(float x_k,float y_kml,float Ts,float tau)
     float y_k;
     y_k = ((tau * y_kml) + (Ts * x_k))/(Ts + tau);
     return y_k;
-}
-
-void printWifiStatus() 
-{
-    // print the SSID of the network you're attached to:
-    Serial.print("SSID: ");
-    Serial.println(WiFi.SSID());
-
-    // print your board's IP address:
-    IPAddress ip = WiFi.localIP();
-    Serial.print("IP Address: ");
-    Serial.println(ip);
-
-    // print the received signal strength:
-    long rssi = WiFi.RSSI();
-    Serial.print("signal strength (RSSI):");
-    Serial.print(rssi);
-    Serial.println(" dBm");
 }
