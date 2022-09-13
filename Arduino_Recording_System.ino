@@ -6,14 +6,14 @@
 #include <stdint.h>
 #include <WiFi.h>
 
-#define _TEST
+//#define _TEST
 
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
 #define SFM3000_SAMPLING_TIME       (50)//[ms]
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
-#define WIFI_SSID                   "BBUNGBBANGWORLD"
-#define WIFI_PASSWORD               "jisu8730"
+#define WIFI_SSID                   "WIFI_SSID명"
+#define WIFI_PASSWORD               "WIFI비밀번호_입력"
 
 #define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
@@ -59,9 +59,7 @@ uint32_t time_pre,time_new;
 
 char ssid[] = WIFI_SSID;        // your network SSID (name)
 char pass[] = WIFI_PASSWORD;        // your network password (use for WPA, or use as key for WEP)
-char server[] = "example.com";       // host name for example.com (using DNS)
 int status = WL_IDLE_STATUS;
-WiFiClient client;
 
 void setup() 
 {
@@ -82,54 +80,16 @@ void setup()
     /***********************************/
 
     /* SD Card Mount and Read file list */
-    Serial.println("SD Card Mount Start");
-    if (!SD.begin(7)) 
-    {
-        Serial.println("SD Card initialization failed!");
-        while (1);
-    }
-    Serial.println("SD Card Mount Finished");
-    Read_WavFile_SdCard();
+    SD_Card_Init();
     /************************************/
 
     /* External SDRAM Allocation for Record wavFile */
-    Serial.println("SDRam Allocation Start");
-    mySDRAM.begin(SDRAM_START_ADDRESS);
-    WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
-    Serial.println("SDRam Allocation Finished");
+    SD_Ram_Init();
     /************************************************/
 
-    // check for the WiFi module:
-    if (WiFi.status() == WL_NO_SHIELD) 
-    {
-        Serial.println("Communication with WiFi module failed!");
-        // don't continue
-        while (true);
-    }
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
-    // attempt to connect to Wifi network:
-    while (status != WL_CONNECTED) 
-    {
-        Serial.print("..");
-        // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-        status = WiFi.begin(ssid, pass);
-        delay(100);
-    }
-    Serial.println("Connected to WiFi");
-    printWifiStatus();
-    
-    Serial.println("\nStarting connection to server...");
-    if (client.connect(server, 80)) 
-    {
-        Serial.println("connected to server");
-        // Make a HTTP request:
-        client.println("GET /index.html HTTP/1.1");
-        client.print("Host: ");
-        client.println(server);
-        client.println("Connection: close");
-        client.println();
-    }
+    /* WiFi Initialize */
+    WiFi_Init();
+    /*******************/
 
     HAL_TIM_Base_Start(&htim6);
     HAL_TIM_Base_Start_IT(&htim16);
@@ -161,6 +121,49 @@ void loop()
     SFM3000_Read_Data();
     Create_WaveFile();
     Save_WavFile_SDCard();
+}
+
+void SD_Card_Init(void)
+{
+    Serial.println("SD Card Mount Start");
+    if (!SD.begin(7)) 
+    {
+        Serial.println("SD Card initialization failed!");
+        while (1);
+    }
+    Serial.println("SD Card Mount Finished");
+    Read_WavFile_SdCard();
+}
+
+void SD_Ram_Init(void)
+{
+    Serial.println("SDRam Allocation Start");
+    mySDRAM.begin(SDRAM_START_ADDRESS);
+    WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
+    Serial.println("SDRam Allocation Finished");
+}
+
+void WiFi_Init(void)
+{
+    // check for the WiFi module:
+    if (WiFi.status() == WL_NO_SHIELD) 
+    {
+        Serial.println("Communication with WiFi module failed!");
+        // don't continue
+        while (true);
+    }
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    // attempt to connect to Wifi network:
+    while (status != WL_CONNECTED) 
+    {
+        Serial.print("..");
+        // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
+        status = WiFi.begin(ssid, pass);
+        delay(100);
+    }
+    Serial.println("Connected to WiFi");
+    printWifiStatus();
 }
 
 void Adc_Sampling(void)
@@ -220,7 +223,6 @@ void SFM3000_Read_Data(void)
         }    
         Flow_Data_Read_Flag = 0;
     }
-
 }
 
 void Create_WaveFile_Header(void)
