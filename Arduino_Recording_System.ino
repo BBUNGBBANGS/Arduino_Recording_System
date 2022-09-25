@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <WiFi.h>
 
-//#define _TEST
+#define _TEST
 
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
@@ -30,9 +30,9 @@
 #define SFM3000_I2C_ADDRESS         (0x40)
 /************************/
 
-#define PI (3.141592f)
-#define TS (0.000022f)
-#define TAU ((float)(1.0f/LOWPASS_FILTER_FREQUENCY/2.0f/PI))
+#define FILTER_PI (3.141592f)
+#define FILTER_TS (0.000022f)
+#define FILTER_TAU ((float)(1.0f/LOWPASS_FILTER_FREQUENCY/2.0f/FILTER_PI))
 
 Wave_Header_t WavFile;
 uint32_t WavFile_length;
@@ -88,7 +88,7 @@ void setup()
     /************************************************/
 
     /* WiFi Initialize */
-    WiFi_Init();
+    //WiFi_Init();
     /*******************/
 
     HAL_TIM_Base_Start(&htim6);
@@ -173,7 +173,7 @@ void Adc_Sampling(void)
     static uint16_t Sound_Data_Old;
     idx = Sound_Data_Length%SOUND_DATA_SIZE;
     AdcValue = (uint16_t)HAL_ADC_GetValue(&hadc1);
-    Sound_Data[idx] = (uint16_t)LowPassFilter(AdcValue,Sound_Data_Old,TS,TAU);
+    Sound_Data[idx] = (uint16_t)LowPassFilter(AdcValue,Sound_Data_Old,FILTER_TS,FILTER_TAU);
     Sound_Data_Old = Sound_Data[idx];
     Sound_Data_Length++;
 
@@ -339,13 +339,17 @@ void Save_WavFile_SDCard(void)
             WavFileName[3] = (WavFile_Count) % 10 + '0';
             myFile = SD.open(WavFileName,FILE_WRITE);
             Serial.println(WavFileName);
-            myFile.write(WavFile_Data,WavFile_length);
+            for(uint32_t i = 0; i<WavFile_length;i++)
+            {
+                myFile.write(WavFile_Data[i]);
+            }
             myFile.close();
 
             FlowFileName[0] = (WavFile_Count/1000) % 10 + '0';
             FlowFileName[1] = (WavFile_Count/100) % 10 + '0';
             FlowFileName[2] = (WavFile_Count/10) % 10 + '0';
             FlowFileName[3] = (WavFile_Count) % 10 + '0';
+            #if 0
             myFile = SD.open(FlowFileName,FILE_WRITE);
             Serial.println(FlowFileName);
             myFile.print("< SFM3000 Flow Sensor Raw Data >\n");
@@ -355,6 +359,7 @@ void Save_WavFile_SDCard(void)
                 myFile.println(temp);
             }
             myFile.close();
+            #endif
 
             Serial.println("SD Card Record Finished");
         break;
