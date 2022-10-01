@@ -11,7 +11,7 @@
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
 #define SFM3000_SAMPLING_TIME       (50)//[ms]
-#define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
+#define LOWPASS_FILTER_FREQUENCY    (500)//[Hz]
 #define WIFI_SSID                   "WIFI_SSID명"
 #define WIFI_PASSWORD               "WIFI비밀번호_입력"
 
