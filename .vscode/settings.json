@@ -3,6 +3,10 @@
         "stm32h7xx_hal_conf.h": "c",
         "stm32h7xx_hal_tim.h": "c",
         "stm32h7xx_hal_adc.h": "c",
-        "stm32h7xx_ll_adc.h": "c"
+        "stm32h7xx_ll_adc.h": "c",
+        "initializer_list": "cpp",
+        "vector": "cpp",
+        "xstring": "cpp",
+        "xutility": "cpp"
     }
 }

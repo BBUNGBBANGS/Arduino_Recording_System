@@ -1,16 +1,12 @@
-#include "main.h"
-#include "wave_header.h"
-#include <SPI.h>
-#include <SD.h>
-#include "SDRAM.h"
-#include <stdint.h>
-#include <WiFi.h>
+
 
 #define _TEST
 
+#include <stdint.h>
+#include "main.h"
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
-#define SFM3000_SAMPLING_TIME       (50)//[ms]
+#define SFM3000_SAMPLING_TIME       (10)//[ms]
 #define LOWPASS_FILTER_FREQUENCY    (500)//[Hz]
 #define WIFI_SSID                   "WIFI_SSID명"
 #define WIFI_PASSWORD               "WIFI비밀번호_입력"
@@ -24,10 +20,30 @@
 #define SOUND_RECORD_HEADER         (3)
 #define SOUND_RECORD_FINISH         (4)
 
+#define SRAM3_START_ADDRESS       ((uint32_t) 0x30040000)
+#define SRAM4_START_ADDRESS       ((uint32_t) 0x38000000)
+struct shared_data
+{
+    uint8_t M4_status;
+    uint8_t M4_Semapore;
+    uint8_t M7_status;
+    uint8_t M7_Semapore;
+    uint16_t Flow_Raw_Data;
+    uint16_t Flow_Data_Length;
+    uint16_t Flow_Data[FLOW_DATA_SIZE];
+};
+
+#ifdef CORE_CM7
+#include "wave_header.h"
+#include <SPI.h>
+#include <SD.h>
+#include "SDRAM.h"
+#include <WiFi.h>
+
+
 #define RECORD_MAX_SECOND           (60)  //Setting Record time <Max : 80[s]>
 #define RECORD_MAX_TIME             (RECORD_MAX_SECOND * 1000000 / 22)
 
-#define SFM3000_I2C_ADDRESS         (0x40)
 /************************/
 
 #define FILTER_PI (3.141592f)
@@ -50,10 +66,6 @@ char WavFileName[] = "0001.wav";
 char FlowFileName[] = "0001.txt";  
 
 SDRAMClass mySDRAM;
-uint16_t Flow_Raw_Data;
-uint16_t Flow_Data[FLOW_DATA_SIZE];
-uint16_t Flow_Data_Length;
-uint8_t Flow_Data_Read_Flag;
 
 uint32_t time_pre,time_new;
 
@@ -61,17 +73,18 @@ char ssid[] = WIFI_SSID;        // your network SSID (name)
 char pass[] = WIFI_PASSWORD;        // your network password (use for WPA, or use as key for WEP)
 int status = WL_IDLE_STATUS;
 
+static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM3_START_ADDRESS;
+
 void setup() 
 {
-    uint8_t tx_buf[2] = {0x10,0x00};
     pinMode(7, OUTPUT);
-    digitalWrite(7, HIGH);
+    digitalWrite(7, HIGH);    
+    MPU_Config();
+    bootM4();
     /* Initialize all configured peripherals */
     MX_GPIO_Init();
     MX_ADC1_Init();
     MX_TIM6_Init();
-    MX_TIM16_Init();
-    MX_I2C3_Init();
     /*****************************************/
 
     /* Initialize Serial for debugging */
@@ -92,14 +105,7 @@ void setup()
     /*******************/
 
     HAL_TIM_Base_Start(&htim6);
-    HAL_TIM_Base_Start_IT(&htim16);
-
-    /* Delay 100[ms] for SFM3000 Safe Start */
-    delay(100);
-    /* start Continuous Measurement */       
-    #ifndef _TEST
-    HAL_I2C_Master_Transmit(&hi2c3,SFM3000_I2C_ADDRESS<<1,tx_buf,2,10);
-    #endif
+    Shared_Ptr->M7_status = SOUND_RECORD_START;
 }
 
 void loop() 
@@ -110,15 +116,14 @@ void loop()
         Serial_data = Serial.read();
         if(Serial_data == 's')
         {
-            Flow_Raw_Data = SFM3000_FLOW_THRESHOLD + 1;
+            Shared_Ptr->Flow_Raw_Data = SFM3000_FLOW_THRESHOLD + 1;
         }
         if(Serial_data == 'p')
         {
-            Flow_Raw_Data = 0;
+            Shared_Ptr->Flow_Raw_Data = 0;
         }
     }
     #endif
-    SFM3000_Read_Data();
     Create_WaveFile();
     Save_WavFile_SDCard();
 }
@@ -191,40 +196,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
     }
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    static uint8_t timer_1ms;
-
-    if(htim->Instance == TIM16)
-    {
-        timer_1ms++;
-        if(timer_1ms>=SFM3000_SAMPLING_TIME)
-        {
-            timer_1ms = 0;
-            Flow_Data_Read_Flag = 1;
-        }
-    }
-}
-
-void SFM3000_Read_Data(void)
-{
-    uint8_t rx_buf[3] = {0,};
-
-    if(Flow_Data_Read_Flag == 1)
-    {
-        #ifndef _TEST
-        HAL_I2C_Master_Receive(&hi2c3,SFM3000_I2C_ADDRESS<<1,rx_buf,3,1);
-        Flow_Raw_Data = rx_buf[1] | (rx_buf[0] << 8);
-        #endif
-        if(SOUND_RECORD_COPY == Sound_Record_Step)
-        {
-            Flow_Data[Flow_Data_Length] = Flow_Raw_Data;
-            Flow_Data_Length++;
-        }    
-        Flow_Data_Read_Flag = 0;
-    }
-}
-
 void Create_WaveFile_Header(void)
 {
     WavFile_length = Sound_Data_Length*2 + 36;
@@ -265,9 +236,10 @@ void Create_WaveFile(void)
     switch(Sound_Record_Step)
     {
         case SOUND_RECORD_INIT:
-            if (Flow_Raw_Data >= SFM3000_FLOW_THRESHOLD)
+            if (Shared_Ptr->Flow_Raw_Data >= SFM3000_FLOW_THRESHOLD)
             {
                 Sound_Record_Step = SOUND_RECORD_START;
+                Shared_Ptr->M7_status = SOUND_RECORD_START;
                 Serial.println("Sound Record Start");
                 time_pre = millis();       
             }
@@ -275,8 +247,9 @@ void Create_WaveFile(void)
         case SOUND_RECORD_START : 
             HAL_ADC_Start_IT(&hadc1);
             Sound_Data_Length = 0;
-            Flow_Data_Length = 0;
+            Shared_Ptr->Flow_Data_Length = 0;
             Sound_Record_Step = SOUND_RECORD_COPY;
+            Shared_Ptr->M7_status = SOUND_RECORD_COPY;
             Serial.println("Sound Record Step : START");
         break;
         case SOUND_RECORD_COPY :
@@ -291,10 +264,10 @@ void Create_WaveFile(void)
                 Sound_Data_Copy_Flag = 0;
             }
 
-            if((RECORD_MAX_TIME <= Sound_Data_Length) || (Flow_Raw_Data <= SFM3000_FLOW_THRESHOLD))
+            if((RECORD_MAX_TIME <= Sound_Data_Length) || (Shared_Ptr->Flow_Raw_Data <= SFM3000_FLOW_THRESHOLD))
             {
                 #ifdef _TEST
-                Flow_Raw_Data = 0;
+                Shared_Ptr->Flow_Raw_Data = 0;
                 #endif
                 Sound_Record_Step = SOUND_RECORD_HEADER;
                 HAL_ADC_Stop_IT(&hadc1);
@@ -310,6 +283,7 @@ void Create_WaveFile(void)
             }
             WavFile_Count++;
             Sound_Record_Step = SOUND_RECORD_FINISH;
+            Shared_Ptr->M7_status = SOUND_RECORD_FINISH;
             Serial.println("Sound Record Step : FINISH");
             time_new = millis();
             Serial.print("Record total time : ");
@@ -318,6 +292,7 @@ void Create_WaveFile(void)
         break;
         case SOUND_RECORD_FINISH : 
             Sound_Record_Step = SOUND_RECORD_INIT;
+            Shared_Ptr->M7_status = SOUND_RECORD_INIT;
         break;
         default :   
             /* do nothing */
@@ -344,22 +319,21 @@ void Save_WavFile_SDCard(void)
                 myFile.write(WavFile_Data[i]);
             }
             myFile.close();
-
+            
             FlowFileName[0] = (WavFile_Count/1000) % 10 + '0';
             FlowFileName[1] = (WavFile_Count/100) % 10 + '0';
             FlowFileName[2] = (WavFile_Count/10) % 10 + '0';
             FlowFileName[3] = (WavFile_Count) % 10 + '0';
-            #if 0
+
             myFile = SD.open(FlowFileName,FILE_WRITE);
             Serial.println(FlowFileName);
             myFile.print("< SFM3000 Flow Sensor Raw Data >\n");
-            for(uint16_t i = 0; i < Flow_Data_Length; i++)
+            for(uint16_t i = 0; i < Shared_Ptr->Flow_Data_Length; i++)
             {
-                temp = String(Flow_Data[i]);
+                temp = String(Shared_Ptr->Flow_Data[i]);
                 myFile.println(temp);
             }
             myFile.close();
-            #endif
 
             Serial.println("SD Card Record Finished");
         break;
@@ -430,3 +404,52 @@ void printWifiStatus()
     Serial.print(rssi);
     Serial.println(" dBm");
 }
+
+#endif // End all M7 core programming
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef CORE_CM4 // Start M4 programming
+
+#define SFM3000_I2C_ADDRESS         (0x40)
+
+static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM3_START_ADDRESS;
+
+void setup() 
+{    
+    uint8_t tx_buf[2] = {0x10,0x00};
+    MX_I2C3_Init();
+    delay(100);
+    HAL_I2C_Master_Transmit(&hi2c3,SFM3000_I2C_ADDRESS<<1,tx_buf,2,10);
+}
+
+void loop()
+{
+    SFM3000_Read_Data();
+    delay(SFM3000_SAMPLING_TIME);
+}
+
+void SFM3000_Read_Data(void)
+{
+    uint8_t rx_buf[3] = {0,};
+
+    if(Shared_Ptr->M7_status == SOUND_RECORD_COPY)
+    {
+        digitalWrite(6,HIGH);
+        HAL_I2C_Master_Receive(&hi2c3,SFM3000_I2C_ADDRESS<<1,rx_buf,3,1);
+        Shared_Ptr->M4_Semapore = 1;
+        #ifndef _TEST
+        Shared_Ptr->Flow_Raw_Data = rx_buf[1] | (rx_buf[0] << 8);
+        #endif
+        Shared_Ptr->M4_Semapore = 0;
+        if(Shared_Ptr->M7_status)
+        {
+            Shared_Ptr->Flow_Data[Shared_Ptr->Flow_Data_Length] = Shared_Ptr->Flow_Raw_Data;
+            Shared_Ptr->Flow_Data_Length++;
+        }    
+        digitalWrite(6,LOW);
+    }
+}
+
+#endif
+

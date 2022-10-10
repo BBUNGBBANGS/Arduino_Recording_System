@@ -33,7 +33,6 @@ extern "C" {
 /* USER CODE BEGIN Includes */
 extern ADC_HandleTypeDef hadc1;
 extern TIM_HandleTypeDef htim6;
-extern TIM_HandleTypeDef htim16;
 extern I2C_HandleTypeDef hi2c3;
 /* USER CODE END Includes */
 
@@ -54,10 +53,10 @@ extern I2C_HandleTypeDef hi2c3;
 
 /* Exported functions prototypes ---------------------------------------------*/
 extern void SystemClock_Config(void);
+extern void MPU_Config(void);
 extern void MX_GPIO_Init(void);
 extern void MX_ADC1_Init(void);
 extern void MX_TIM6_Init(void);
-extern void MX_TIM16_Init(void);
 extern void MX_I2C3_Init(void);
 /* USER CODE BEGIN EFP */
 

@@ -25,7 +25,6 @@ ADC_HandleTypeDef hadc1;
 I2C_HandleTypeDef hi2c3;
 
 TIM_HandleTypeDef htim6;
-TIM_HandleTypeDef htim16;
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -240,38 +239,6 @@ void MX_TIM6_Init(void)
 }
 
 /**
-  * @brief TIM16 Initialization Function
-  * @param None
-  * @retval None
-  */
-void MX_TIM16_Init(void)
-{
-
-  /* USER CODE BEGIN TIM16_Init 0 */
-
-  /* USER CODE END TIM16_Init 0 */
-
-  /* USER CODE BEGIN TIM16_Init 1 */
-
-  /* USER CODE END TIM16_Init 1 */
-  htim16.Instance = TIM16;
-  htim16.Init.Prescaler = 199;
-  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 1000; //SFM3000 Read Timer [us]
-  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim16.Init.RepetitionCounter = 0;
-  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM16_Init 2 */
-
-  /* USER CODE END TIM16_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -312,32 +279,52 @@ void MX_GPIO_Init(void)
 /* USER CODE END 4 */
 
 /* MPU Configuration */
-
+#define SRAM3_START_ADDRESS       ((uint32_t) 0x30040000)
 void MPU_Config(void)
 {
-    MPU_Region_InitTypeDef MPU_InitStruct = {0};
+  MPU_Region_InitTypeDef MPU_InitStruct;
 
-    /* Disables the MPU */
-    HAL_MPU_Disable();
+  /* Disable the MPU */
+  HAL_MPU_Disable();
 
-    /** Initializes and configures the Region and the memory to be protected
-     */
-    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
-    MPU_InitStruct.Number = MPU_REGION_NUMBER0;
-    MPU_InitStruct.BaseAddress = 0x0;
-    MPU_InitStruct.Size = MPU_REGION_SIZE_4GB;
-    MPU_InitStruct.SubRegionDisable = 0x87;
-    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
-    MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
-    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
-    MPU_InitStruct.IsShareable = MPU_ACCESS_SHAREABLE;
-    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
-    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+  /////////////
+  /* Configure the MPU attributes as WT for SDRAM */
+  MPU_InitStruct.Enable = MPU_REGION_ENABLE;
 
-    HAL_MPU_ConfigRegion(&MPU_InitStruct);
-    /* Enables the MPU */
-    HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
+  // Base address of the region to protect
+  MPU_InitStruct.BaseAddress = SRAM3_START_ADDRESS;             // For SRAM3 only
+  // Size of the region to protect, only 32K for SRAM3
+  MPU_InitStruct.Size = MPU_REGION_SIZE_32KB;                   // Important to access more memory
 
+  // Region access permission type
+  MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+
+  // Shareability status of the protected region
+  MPU_InitStruct.IsShareable = MPU_ACCESS_SHAREABLE;
+
+  /////////////
+
+  // Optional
+
+  // Bufferable status of the protected region
+  //MPU_InitStruct.IsBufferable = MPU_ACCESS_BUFFERABLE;
+  // Cacheable status of the protected region
+  //MPU_InitStruct.IsCacheable = MPU_ACCESS_CACHEABLE;
+  // Number of the region to protect
+  //MPU_InitStruct.Number = MPU_REGION_NUMBER7;
+  // TEX field level
+  //MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
+  // number of the subregion protection to disable
+  //MPU_InitStruct.SubRegionDisable = 0x00;
+  // instruction access status
+  //MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
+
+  /////////////
+
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /* Enable the MPU */
+  HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 }
 
 /**
