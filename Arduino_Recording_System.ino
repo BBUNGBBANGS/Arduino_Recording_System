@@ -24,6 +24,7 @@
 #define SOUND_RECORD_WIFI           (5)
 
 #define SRAM3_START_ADDRESS       ((uint32_t) 0x30040000)
+#define SRAM4_START_ADDRESS       ((uint32_t) 0x38000000)
 struct shared_data
 {
     uint8_t M4_status;
@@ -78,7 +79,7 @@ int status = WL_IDLE_STATUS;
 char myDomain[] = GOOGLE_DRIVE_ADDRESS;
 String myScript = GOOGLE_DRIVE_SCRIPT;
 
-static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM3_START_ADDRESS;
+static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM4_START_ADDRESS;
 
 void setup() 
 {    
@@ -515,7 +516,7 @@ void Save_Google_Drive(void)
 
 #define SFM3000_I2C_ADDRESS         (0x40)
 
-static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM3_START_ADDRESS;
+static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM4_START_ADDRESS;
 
 void setup() 
 {    
