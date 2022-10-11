@@ -3,7 +3,7 @@
 #define FMT_SIZE            (16)
 #define AUDIO_FORMAT        (1)
 #define NUMBER_OF_CHANNEL   (1)
-#define SAMPLE_RATE         (44100)
+#define SAMPLE_RATE         (45454)
 #define BPS                 (16)
 #define BLOCK_ALIGN         (NUMBER_OF_CHANNEL * (BPS/8))
 #define BYTE_RATE           (SAMPLE_RATE * NUMBER_OF_CHANNEL * (BPS/8))

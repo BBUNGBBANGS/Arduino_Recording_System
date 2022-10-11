@@ -13,7 +13,7 @@
 %
 %%
 % Load in birdcall (source: https://www.xeno-canto.org/403881).
-[bc,fs] = audioread('F:\0007.WAV');
+[bc,fs] = audioread('F:\0006.WAV');
 % Configuration params for Fourier transforms.
 freq_range = [0 8000]; % Hz
 dft_loop_reduction = 100; % set to 1 for no reduction (Hint: takes a long time)

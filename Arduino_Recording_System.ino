@@ -7,7 +7,7 @@
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
 #define SFM3000_SAMPLING_TIME       (10)//[ms]
-#define LOWPASS_FILTER_FREQUENCY    (500)//[Hz]
+#define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
 #define WIFI_SSID                   "WIFI_SSID명"
 #define WIFI_PASSWORD               "WIFI비밀번호_입력"
 
@@ -21,7 +21,6 @@
 #define SOUND_RECORD_FINISH         (4)
 
 #define SRAM3_START_ADDRESS       ((uint32_t) 0x30040000)
-#define SRAM4_START_ADDRESS       ((uint32_t) 0x38000000)
 struct shared_data
 {
     uint8_t M4_status;
@@ -53,7 +52,7 @@ struct shared_data
 Wave_Header_t WavFile;
 uint32_t WavFile_length;
 uint32_t Sound_Data_Length;
-uint16_t Sound_Data[SOUND_DATA_SIZE];
+int16_t Sound_Data[SOUND_DATA_SIZE];
 uint8_t Sound_Record_Step;
 uint8_t Sound_Data_Copy_Flag;
 uint8_t *WavFile_Data;
@@ -76,7 +75,7 @@ int status = WL_IDLE_STATUS;
 static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM3_START_ADDRESS;
 
 void setup() 
-{
+{    
     pinMode(7, OUTPUT);
     digitalWrite(7, HIGH);    
     MPU_Config();
@@ -175,10 +174,36 @@ void Adc_Sampling(void)
 {
     uint32_t idx;
     uint16_t AdcValue;
-    static uint16_t Sound_Data_Old;
+    int16_t ConvertVoltage;
+    int16_t diffVoltage;
+    static int16_t Sound_Data_Old;
+    static int16_t ConvertVoltage_Old;
+
     idx = Sound_Data_Length%SOUND_DATA_SIZE;
     AdcValue = (uint16_t)HAL_ADC_GetValue(&hadc1);
-    Sound_Data[idx] = (uint16_t)LowPassFilter(AdcValue,Sound_Data_Old,FILTER_TS,FILTER_TAU);
+    /* Max 2.0V for MAX9814 */
+    /* 2.0(Vpp) / 3.0(Aref) * 65536(Adc Resolution) */
+    if(AdcValue>43691)
+    {
+        AdcValue = 43691;
+    }
+    /* Max 0.4V for MAX9814 */
+    /* 0.4(Vpp) / 3.0(Aref) * 65536(Adc Resolution) */
+    if(AdcValue<8738)
+    {
+        AdcValue = 8738;
+    }
+    /* Convert 1.2(Vpp) DC Bias + 0.06(vpp) Bias*/
+    ConvertVoltage = (int16_t)(AdcValue - 27525);
+    /* Prevent Urgent gradient difference */
+    diffVoltage = ConvertVoltage - ConvertVoltage_Old;
+    if((diffVoltage > 15000)||(diffVoltage < -15000))
+    {
+        ConvertVoltage = ConvertVoltage_Old;
+    }
+    ConvertVoltage_Old = ConvertVoltage;
+   
+    Sound_Data[idx] = (int16_t)LowPassFilter((float)ConvertVoltage,(float)Sound_Data_Old,FILTER_TS,FILTER_TAU);
     Sound_Data_Old = Sound_Data[idx];
     Sound_Data_Length++;
 
@@ -435,7 +460,6 @@ void SFM3000_Read_Data(void)
 
     if(Shared_Ptr->M7_status == SOUND_RECORD_COPY)
     {
-        digitalWrite(6,HIGH);
         HAL_I2C_Master_Receive(&hi2c3,SFM3000_I2C_ADDRESS<<1,rx_buf,3,1);
         Shared_Ptr->M4_Semapore = 1;
         #ifndef _TEST
@@ -447,7 +471,6 @@ void SFM3000_Read_Data(void)
             Shared_Ptr->Flow_Data[Shared_Ptr->Flow_Data_Length] = Shared_Ptr->Flow_Raw_Data;
             Shared_Ptr->Flow_Data_Length++;
         }    
-        digitalWrite(6,LOW);
     }
 }
 
