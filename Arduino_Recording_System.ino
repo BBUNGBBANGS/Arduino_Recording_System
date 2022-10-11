@@ -8,8 +8,10 @@
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
 #define SFM3000_SAMPLING_TIME       (10)//[ms]
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
-#define WIFI_SSID                   "WIFI_SSID명"
-#define WIFI_PASSWORD               "WIFI비밀번호_입력"
+#define WIFI_SSID                   "BBUNGBBANGWORLD"
+#define WIFI_PASSWORD               "jisu8730"
+#define GOOGLE_DRIVE_ADDRESS        "script.google.com";
+#define GOOGLE_DRIVE_SCRIPT         "/macros/s/AKfycbxXn4NEnlrJEkjbbHrbW824tKpQDYF2N1pYUWVoyUFPI8cwRGweJTADpSGL8AIGknYr5w/exec";    //Replace with your own url
 
 #define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
@@ -19,6 +21,7 @@
 #define SOUND_RECORD_COPY           (2)
 #define SOUND_RECORD_HEADER         (3)
 #define SOUND_RECORD_FINISH         (4)
+#define SOUND_RECORD_WIFI           (5)
 
 #define SRAM3_START_ADDRESS       ((uint32_t) 0x30040000)
 struct shared_data
@@ -72,6 +75,9 @@ char ssid[] = WIFI_SSID;        // your network SSID (name)
 char pass[] = WIFI_PASSWORD;        // your network password (use for WPA, or use as key for WEP)
 int status = WL_IDLE_STATUS;
 
+char myDomain[] = GOOGLE_DRIVE_ADDRESS;
+String myScript = GOOGLE_DRIVE_SCRIPT;
+
 static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM3_START_ADDRESS;
 
 void setup() 
@@ -100,7 +106,7 @@ void setup()
     /************************************************/
 
     /* WiFi Initialize */
-    //WiFi_Init();
+    WiFi_Init();
     /*******************/
 
     HAL_TIM_Base_Start(&htim6);
@@ -125,6 +131,7 @@ void loop()
     #endif
     Create_WaveFile();
     Save_WavFile_SDCard();
+    Save_Google_Drive();
 }
 
 void SD_Card_Init(void)
@@ -316,10 +323,6 @@ void Create_WaveFile(void)
             Serial.print(time_new - time_pre);
             Serial.println("[ms]");
         break;
-        case SOUND_RECORD_FINISH : 
-            Sound_Record_Step = SOUND_RECORD_INIT;
-            Shared_Ptr->M7_status = SOUND_RECORD_INIT;
-        break;
         default :   
             /* do nothing */
         break;
@@ -362,6 +365,9 @@ void Save_WavFile_SDCard(void)
             myFile.close();
             SPI.endTransaction();
             Serial.println("SD Card Record Finished");
+            
+            Sound_Record_Step = SOUND_RECORD_WIFI;
+            Shared_Ptr->M7_status = SOUND_RECORD_WIFI;
         break;
         default : 
         break;
@@ -431,6 +437,76 @@ void printWifiStatus()
     Serial.println(" dBm");
 }
 
+void Save_Google_Drive(void)
+{
+    WiFiClient client;
+    switch(Sound_Record_Step)
+    {
+        case SOUND_RECORD_WIFI :
+        {
+            if(client.connect(myDomain, 443))
+            {
+                Serial.println("Connected to " + String(myDomain) + " Success.");    
+
+                #if 0
+                char *input = (char *)fb->buf;
+                char output[base64_enc_len(3)];
+                String imageFile = "";
+                for (int i=0;i<fb->len;i++) 
+                {
+                    base64_encode(output, (input++), 3);
+                    if (i%3==0) imageFile += urlencode(String(output));
+                }
+                String Data = myFilename+mimeType+myImage;  
+                        
+                Serial.println("Send a captured image to Google Drive.");
+                
+                client.println("POST " + myScript + " HTTP/1.1");
+                client.println("Host: " + String(myDomain));
+                client.println("Content-Length: " + String(Data.length()+imageFile.length()));
+                client.println("Content-Type: application/x-www-form-urlencoded");
+                client.println();
+                
+                client.print(Data);
+                int Index;
+                for (Index = 0; Index < imageFile.length(); Index = Index+1000) 
+                {
+                    client.print(imageFile.substring(Index, Index+1000));
+                }
+            
+                Serial.println("Waiting for response.");
+                long int StartTime=millis();
+                while (!client.available()) 
+                {
+                    Serial.print(".");
+                    delay(100);
+                    if ((StartTime+waitingTime) < millis()) 
+                    {
+                        Serial.println();
+                        Serial.println("No response.");
+                        //If you have no response, maybe need a greater value of waitingTime
+                        break;
+                    }
+                }
+                Serial.println();   
+                while (client.available()) 
+                {
+                    Serial.print(char(client.read()));
+                }  
+                #endif  
+            }
+            else
+            {
+                Serial.println("Connected to " + String(myDomain) + " failed.");             
+            }
+            client.stop();
+            Sound_Record_Step = SOUND_RECORD_INIT;
+            Shared_Ptr->M7_status = SOUND_RECORD_INIT;
+        }
+        break;
+    }
+
+}
 #endif // End all M7 core programming
 
 /////////////////////////////////////////////////////////////////////////////////////////////
