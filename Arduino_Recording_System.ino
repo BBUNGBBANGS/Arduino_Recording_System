@@ -11,7 +11,7 @@
 #define WIFI_SSID                   "BBUNGBBANGWORLD"
 #define WIFI_PASSWORD               "jisu8730"
 #define GOOGLE_DRIVE_ADDRESS        "script.google.com";
-#define GOOGLE_DRIVE_SCRIPT         "/macros/s/AKfycbxXn4NEnlrJEkjbbHrbW824tKpQDYF2N1pYUWVoyUFPI8cwRGweJTADpSGL8AIGknYr5w/exec";    //Replace with your own url
+#define GOOGLE_DRIVE_SCRIPT         "/macros/s/AKfycbzhXLLE6we-eJl3I3QMLdu5rXXyt6MwOukmGqWz8Mb4jwJRAZitGM1D_13cHvoRBX_oZA/exec";    //Replace with your own url
 
 #define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
@@ -42,6 +42,7 @@ struct shared_data
 #include <SD.h>
 #include "SDRAM.h"
 #include <WiFi.h>
+#include "Base64.h"
 
 
 #define RECORD_MAX_SECOND           (60)  //Setting Record time <Max : 80[s]>
@@ -78,6 +79,8 @@ int status = WL_IDLE_STATUS;
 
 char myDomain[] = GOOGLE_DRIVE_ADDRESS;
 String myScript = GOOGLE_DRIVE_SCRIPT;
+String mimeType = "&mimetype=audio/wav";
+String myWav = "&data=";
 
 static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM4_START_ADDRESS;
 
@@ -441,6 +444,7 @@ void printWifiStatus()
 void Save_Google_Drive(void)
 {
     WiFiClient client;
+    uint16_t waitingTime = 30000; //Wait 30 seconds to google response.
     switch(Sound_Record_Step)
     {
         case SOUND_RECORD_WIFI :
@@ -449,34 +453,36 @@ void Save_Google_Drive(void)
             {
                 Serial.println("Connected to " + String(myDomain) + " Success.");    
 
-                #if 0
-                char *input = (char *)fb->buf;
+                char *input = (char *)WavFile_Data;
                 char output[base64_enc_len(3)];
-                String imageFile = "";
-                for (int i=0;i<fb->len;i++) 
+
+                String sWavFile = "";
+
+                for (int i=0;i<WavFile_length;i++) 
                 {
                     base64_encode(output, (input++), 3);
-                    if (i%3==0) imageFile += urlencode(String(output));
+                    if (i%3==0) sWavFile += urlencode(String(output));
                 }
-                String Data = myFilename+mimeType+myImage;  
-                        
-                Serial.println("Send a captured image to Google Drive.");
+
+                String Data = WavFileName+mimeType+myWav;  
+             
+                Serial.println("Send a captured WavFile to Google Drive.");
                 
                 client.println("POST " + myScript + " HTTP/1.1");
                 client.println("Host: " + String(myDomain));
-                client.println("Content-Length: " + String(Data.length()+imageFile.length()));
+                client.println("Content-Length: " + String(Data.length()+sWavFile.length()));
                 client.println("Content-Type: application/x-www-form-urlencoded");
                 client.println();
                 
                 client.print(Data);
                 int Index;
-                for (Index = 0; Index < imageFile.length(); Index = Index+1000) 
+                for (Index = 0; Index < sWavFile.length(); Index = Index+1000) 
                 {
-                    client.print(imageFile.substring(Index, Index+1000));
+                    client.print(sWavFile.substring(Index, Index+1000));
                 }
-            
+
                 Serial.println("Waiting for response.");
-                long int StartTime=millis();
+                long int StartTime = millis();
                 while (!client.available()) 
                 {
                     Serial.print(".");
@@ -494,7 +500,6 @@ void Save_Google_Drive(void)
                 {
                     Serial.print(char(client.read()));
                 }  
-                #endif  
             }
             else
             {
@@ -506,8 +511,42 @@ void Save_Google_Drive(void)
         }
         break;
     }
-
 }
+
+String urlencode(String str)
+{
+    String encodedString="";
+    char c;
+    char code0;
+    char code1;
+    char code2;
+    for (int i =0; i < str.length(); i++){
+      c=str.charAt(i);
+      if (c == ' '){
+        encodedString+= '+';
+      } else if (isalnum(c)){
+        encodedString+=c;
+      } else{
+        code1=(c & 0xf)+'0';
+        if ((c & 0xf) >9){
+            code1=(c & 0xf) - 10 + 'A';
+        }
+        c=(c>>4)&0xf;
+        code0=c+'0';
+        if (c > 9){
+            code0=c - 10 + 'A';
+        }
+        code2='\0';
+        encodedString+='%';
+        encodedString+=code0;
+        encodedString+=code1;
+        //encodedString+=code2;
+      }
+      yield();
+    }
+    return encodedString;
+}
+
 #endif // End all M7 core programming
 
 /////////////////////////////////////////////////////////////////////////////////////////////
