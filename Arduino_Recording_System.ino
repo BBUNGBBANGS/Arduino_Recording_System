@@ -135,6 +135,7 @@ void SD_Card_Init(void)
         Serial.println("SD Card initialization failed!");
         while (1);
     }
+
     Serial.println("SD Card Mount Finished");
     Read_WavFile_SdCard();
 }
@@ -332,7 +333,7 @@ void Save_WavFile_SDCard(void)
     {
         case SOUND_RECORD_FINISH : 
             Serial.println("SD Card Record Start");
-
+            SPI.beginTransaction(SPISettings(18000000, MSBFIRST, SPI_MODE0));
             WavFileName[0] = (WavFile_Count/1000) % 10 + '0';
             WavFileName[1] = (WavFile_Count/100) % 10 + '0';
             WavFileName[2] = (WavFile_Count/10) % 10 + '0';
@@ -359,7 +360,7 @@ void Save_WavFile_SDCard(void)
                 myFile.println(temp);
             }
             myFile.close();
-
+            SPI.endTransaction();
             Serial.println("SD Card Record Finished");
         break;
         default : 
