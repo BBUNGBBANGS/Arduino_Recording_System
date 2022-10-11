@@ -285,7 +285,9 @@ void MX_GPIO_Init(void)
 /* USER CODE END 4 */
 
 /* MPU Configuration */
+
 #define SRAM3_START_ADDRESS       ((uint32_t) 0x30040000)
+#define SRAM4_START_ADDRESS       ((uint32_t) 0x38000000)
 void MPU_Config(void)
 {
   MPU_Region_InitTypeDef MPU_InitStruct;
@@ -298,9 +300,9 @@ void MPU_Config(void)
   MPU_InitStruct.Enable = MPU_REGION_ENABLE;
 
   // Base address of the region to protect
-  MPU_InitStruct.BaseAddress = SRAM3_START_ADDRESS;             // For SRAM3 only
+  MPU_InitStruct.BaseAddress = SRAM4_START_ADDRESS;             // For SRAM3 only
   // Size of the region to protect, only 32K for SRAM3
-  MPU_InitStruct.Size = MPU_REGION_SIZE_32KB;                   // Important to access more memory
+  MPU_InitStruct.Size = MPU_REGION_SIZE_64KB;                   // Important to access more memory
 
   // Region access permission type
   MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
