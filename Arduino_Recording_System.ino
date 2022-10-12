@@ -8,10 +8,11 @@
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
 #define SFM3000_SAMPLING_TIME       (10)//[ms]
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
-#define WIFI_SSID                   "BBUNGBBANGWORLD"
-#define WIFI_PASSWORD               "jisu8730"
-#define GOOGLE_DRIVE_ADDRESS        "script.google.com";
-#define GOOGLE_DRIVE_SCRIPT         "/macros/s/AKfycbzhXLLE6we-eJl3I3QMLdu5rXXyt6MwOukmGqWz8Mb4jwJRAZitGM1D_13cHvoRBX_oZA/exec";    //Replace with your own url
+#define WIFI_SSID                   "BBWORLD_MESH"
+#define WIFI_PASSWORD               "jisu44745354"
+#define GOOGLE_DRIVE_HOST "script.google.com"
+#define GOOGLE_DRIVE_SCRIPT_ID "AKfycbzS-WcFkqvGKu_Y34XkDCAuq-KLaeXGM8vZkBwoCbgeB-8msHA7Q_rX0aSxYgr3Fn9P-g"
+//https://script.google.com/macros/s/AKfycbzS-WcFkqvGKu_Y34XkDCAuq-KLaeXGM8vZkBwoCbgeB-8msHA7Q_rX0aSxYgr3Fn9P-g/exec
 
 #define SOUND_DATA_SIZE             (100)
 #define FLOW_DATA_SIZE              (100000)
@@ -41,7 +42,7 @@ struct shared_data
 #include <SPI.h>
 #include <SD.h>
 #include "SDRAM.h"
-#include <WiFi.h>
+#include <WiFiSSLClient.h>
 #include "Base64.h"
 
 
@@ -77,10 +78,10 @@ char ssid[] = WIFI_SSID;        // your network SSID (name)
 char pass[] = WIFI_PASSWORD;        // your network password (use for WPA, or use as key for WEP)
 int status = WL_IDLE_STATUS;
 
-char myDomain[] = GOOGLE_DRIVE_ADDRESS;
-String myScript = GOOGLE_DRIVE_SCRIPT;
-String mimeType = "&mimetype=audio/wav";
-String myWav = "&data=";
+const char *folder = "WavFile";
+const char *scriptID = GOOGLE_DRIVE_SCRIPT_ID;
+const char *host = GOOGLE_DRIVE_HOST;
+const int port = 443;
 
 static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM4_START_ADDRESS;
 
@@ -168,6 +169,7 @@ void WiFi_Init(void)
         // don't continue
         while (true);
     }
+    
     Serial.print("Attempting to connect to SSID: ");
     Serial.println(ssid);
     // attempt to connect to Wifi network:
@@ -178,6 +180,7 @@ void WiFi_Init(void)
         status = WiFi.begin(ssid, pass);
         delay(100);
     }
+    Serial.println();
     Serial.println("Connected to WiFi");
     printWifiStatus();
 }
@@ -443,67 +446,75 @@ void printWifiStatus()
 
 void Save_Google_Drive(void)
 {
-    WiFiClient client;
+    WiFiSSLClient client;
     uint16_t waitingTime = 30000; //Wait 30 seconds to google response.
     switch(Sound_Record_Step)
     {
         case SOUND_RECORD_WIFI :
         {
-            if(client.connect(myDomain, 443))
+            if(client.connectSSL(host, port))
             {
-                Serial.println("Connected to " + String(myDomain) + " Success.");    
+                Serial.println("Connected to " + String(host) + " Success.");    
 
-                char *input = (char *)WavFile_Data;
-                char output[base64_enc_len(3)];
+                int WavLen = WavFile_length;
+                char *input = (char*)WavFile_Data;
+                Serial.println("Sending image to Google Drive.");
+                Serial.println("Size: " + String(WavLen) + "byte");
 
-                String sWavFile = "";
+                String url = "/macros/s/" + String(scriptID) + "/exec?folder=" + String(folder);
 
-                for (int i=0;i<WavFile_length;i++) 
-                {
-                    base64_encode(output, (input++), 3);
-                    if (i%3==0) sWavFile += urlencode(String(output));
-                }
-
-                String Data = WavFileName+mimeType+myWav;  
-             
-                Serial.println("Send a captured WavFile to Google Drive.");
-                
-                client.println("POST " + myScript + " HTTP/1.1");
-                client.println("Host: " + String(myDomain));
-                client.println("Content-Length: " + String(Data.length()+sWavFile.length()));
-                client.println("Content-Type: application/x-www-form-urlencoded");
+                client.println("POST " + url + " HTTP/1.1");
+                client.println("Host: " + String(host));
+                client.println("Transfer-Encoding: chunked");
                 client.println();
+
+                int chunkSize = 3 * 1000; // must be multiple of 3
+                int chunkBase64Size = base64_enc_len(chunkSize);
+                char output[chunkBase64Size + 1];
                 
-                client.print(Data);
-                int Index;
-                for (Index = 0; Index < sWavFile.length(); Index = Index+1000) 
+                Serial.println();
+                int chunk = 0;
+                for (int i = 0; i < WavLen; i += chunkSize)
                 {
-                    client.print(sWavFile.substring(Index, Index+1000));
+                    int l = base64_encode(output, input, min(WavLen - i, chunkSize));
+                    client.print(l, HEX);
+                    client.print("\r\n");
+                    client.print(output);
+                    client.print("\r\n");
+                    //delay(100);
+                    input += chunkSize;
+                    Serial.print(".");
+                    chunk++;
+                    if (chunk % 50 == 0)
+                    {
+                        Serial.println();
+                    }
                 }
+                client.print("0\r\n");
+                client.print("\r\n");
 
                 Serial.println("Waiting for response.");
                 long int StartTime = millis();
-                while (!client.available()) 
+                while (!client.available())
                 {
                     Serial.print(".");
                     delay(100);
-                    if ((StartTime+waitingTime) < millis()) 
+                    if ((StartTime + waitingTime * 1000) < millis())
                     {
                         Serial.println();
                         Serial.println("No response.");
-                        //If you have no response, maybe need a greater value of waitingTime
                         break;
                     }
                 }
-                Serial.println();   
-                while (client.available()) 
+                Serial.println();
+                while (client.available())
                 {
                     Serial.print(char(client.read()));
-                }  
+                }
             }
             else
             {
-                Serial.println("Connected to " + String(myDomain) + " failed.");             
+                Serial.println("Connected to " + String(host) + " failed.");             
             }
             client.stop();
             Sound_Record_Step = SOUND_RECORD_INIT;
