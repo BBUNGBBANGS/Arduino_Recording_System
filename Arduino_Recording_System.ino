@@ -468,19 +468,19 @@ void Save_Google_Drive(void)
                 client.println("Transfer-Encoding: chunked");
                 client.println();
 
-                int chunkSize = 3 * 1000; // must be multiple of 3
+                int chunkSize = 200; // must be multiple of 3
                 int chunkBase64Size = base64_enc_len(chunkSize);
                 char output[chunkBase64Size + 1];
                 
+                long int TransTime_pre = millis();
                 Serial.println();
                 int chunk = 0;
                 for (int i = 0; i < WavLen; i += chunkSize)
                 {
                     int l = base64_encode(output, input, min(WavLen - i, chunkSize));
                     client.print(l, HEX);
-                    client.print("\r\n");
-                    client.print(output);
-                    client.print("\r\n");
+                    String temp = "\r\n" + String(output) + "\r\n";
+                    client.print(temp);
                     //delay(100);
                     input += chunkSize;
                     Serial.print(".");
@@ -492,7 +492,10 @@ void Save_Google_Drive(void)
                 }
                 client.print("0\r\n");
                 client.print("\r\n");
-
+                long int TransTime_new = millis();
+                Serial.print("HTTP Send data time : ");
+                Serial.print(TransTime_new - TransTime_pre);
+                Serial.println("[ms]");
                 Serial.println("Waiting for response.");
                 long int StartTime = millis();
                 while (!client.available())
