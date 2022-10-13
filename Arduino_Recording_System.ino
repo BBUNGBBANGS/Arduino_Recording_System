@@ -6,16 +6,16 @@
 #include "main.h"
 /* 아래 값 조정해서 측정 민감도 도절 가능 */
 #define SFM3000_FLOW_THRESHOLD      (40000)//Raw Data
-#define SFM3000_SAMPLING_TIME       (10)//[ms]
+#define SFM3000_SAMPLING_TIME       (2)//[ms]
 #define LOWPASS_FILTER_FREQUENCY    (1000)//[Hz]
-#define WIFI_SSID                   "BBWORLD_MESH"
-#define WIFI_PASSWORD               "jisu44745354"
+#define WIFI_SSID                   "WiFi SSID 기입"
+#define WIFI_PASSWORD               "WIFI 비밀번호 기입"
 #define GOOGLE_DRIVE_HOST "script.google.com"
-#define GOOGLE_DRIVE_SCRIPT_ID "AKfycbzS-WcFkqvGKu_Y34XkDCAuq-KLaeXGM8vZkBwoCbgeB-8msHA7Q_rX0aSxYgr3Fn9P-g"
-//https://script.google.com/macros/s/AKfycbzS-WcFkqvGKu_Y34XkDCAuq-KLaeXGM8vZkBwoCbgeB-8msHA7Q_rX0aSxYgr3Fn9P-g/exec
-
+#define GOOGLE_DRIVE_SCRIPT_WAVID "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+//
+#define GOOGLE_DRIVE_SCRIPT_FLOWID "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+//
 #define SOUND_DATA_SIZE             (100)
-#define FLOW_DATA_SIZE              (100000)
 
 #define SOUND_RECORD_INIT           (0)
 #define SOUND_RECORD_START          (1)
@@ -34,7 +34,6 @@ struct shared_data
     uint8_t M7_Semapore;
     uint16_t Flow_Raw_Data;
     uint16_t Flow_Data_Length;
-    uint16_t Flow_Data[FLOW_DATA_SIZE];
 };
 
 #ifdef CORE_CM7
@@ -44,6 +43,8 @@ struct shared_data
 #include "SDRAM.h"
 #include <WiFiSSLClient.h>
 #include "Base64.h"
+#include <stdio.h>
+#include <iostream>
 
 
 #define RECORD_MAX_SECOND           (60)  //Setting Record time <Max : 80[s]>
@@ -62,9 +63,11 @@ int16_t Sound_Data[SOUND_DATA_SIZE];
 uint8_t Sound_Record_Step;
 uint8_t Sound_Data_Copy_Flag;
 uint8_t *WavFile_Data;
+uint16_t *Flow_Data;
 uint16_t WavFile_Count;
 
 uint8_t Serial_data;
+
 
 File myFile;
 char WavFileName[] = "0001.wav";  
@@ -76,15 +79,16 @@ uint32_t time_pre,time_new;
 
 char ssid[] = WIFI_SSID;        // your network SSID (name)
 char pass[] = WIFI_PASSWORD;        // your network password (use for WPA, or use as key for WEP)
-int status = WL_IDLE_STATUS;
 
 const char *folder = "WavFile";
-const char *scriptID = GOOGLE_DRIVE_SCRIPT_ID;
+const char *scriptID1 = GOOGLE_DRIVE_SCRIPT_WAVID;
+const char *scriptID2 = GOOGLE_DRIVE_SCRIPT_FLOWID;
 const char *host = GOOGLE_DRIVE_HOST;
 const int port = 443;
 
 static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM4_START_ADDRESS;
 
+uint16_t test_chunk;
 void setup() 
 {    
     pinMode(7, OUTPUT);
@@ -96,7 +100,7 @@ void setup()
     MX_ADC1_Init();
     MX_TIM6_Init();
     /*****************************************/
-
+    
     /* Initialize Serial for debugging */
     Serial.begin(115200);
     while(!Serial);
@@ -109,10 +113,8 @@ void setup()
     /* External SDRAM Allocation for Record wavFile */
     SD_Ram_Init();
     /************************************************/
-
-    /* WiFi Initialize */
-    WiFi_Init();
-    /*******************/
+    
+    Shared_Data_Init();
 
     HAL_TIM_Base_Start(&htim6);
     Shared_Ptr->M7_status = SOUND_RECORD_START;
@@ -131,7 +133,7 @@ void loop()
         if(Serial_data == 'p')
         {
             Shared_Ptr->Flow_Raw_Data = 0;
-        }
+        }       
     }
     #endif
     Create_WaveFile();
@@ -139,6 +141,15 @@ void loop()
     Save_Google_Drive();
 }
 
+void Shared_Data_Init(void)
+{
+    Shared_Ptr->M4_status = 0;
+    Shared_Ptr->M4_Semapore = 0;
+    Shared_Ptr->M7_status = 0;
+    Shared_Ptr->M7_Semapore = 0;
+    Shared_Ptr->Flow_Raw_Data = 0;
+    Shared_Ptr->Flow_Data_Length = 0;
+}
 void SD_Card_Init(void)
 {
     Serial.println("SD Card Mount Start");
@@ -156,12 +167,14 @@ void SD_Ram_Init(void)
 {
     Serial.println("SDRam Allocation Start");
     mySDRAM.begin(SDRAM_START_ADDRESS);
-    WavFile_Data = (uint8_t *)mySDRAM.malloc(7 * 1024 * 1024);
+    WavFile_Data = (uint8_t *)mySDRAM.malloc(6 * 1024 * 1024);
+    Flow_Data = (uint16_t *)mySDRAM.malloc(1 * 1024 * 1024);
     Serial.println("SDRam Allocation Finished");
 }
 
 void WiFi_Init(void)
 {
+    int status = WL_IDLE_STATUS;
     // check for the WiFi module:
     if (WiFi.status() == WL_NO_SHIELD) 
     {
@@ -366,7 +379,7 @@ void Save_WavFile_SDCard(void)
             myFile.print("< SFM3000 Flow Sensor Raw Data >\n");
             for(uint16_t i = 0; i < Shared_Ptr->Flow_Data_Length; i++)
             {
-                temp = String(Shared_Ptr->Flow_Data[i]);
+                temp = String(Flow_Data[i]);
                 myFile.println(temp);
             }
             myFile.close();
@@ -452,50 +465,61 @@ void Save_Google_Drive(void)
     {
         case SOUND_RECORD_WIFI :
         {
+            /* WiFi Initialize */
+            WiFi_Init();
+            /*******************/
+
             if(client.connectSSL(host, port))
             {
                 Serial.println("Connected to " + String(host) + " Success.");    
 
+                Serial.println("Sending File to Google Drive.");
+                
+                Serial.println("/************************************* Wav File Upload ***************************************/");
+                /************************************* Wav File Upload ***************************************/
                 int WavLen = WavFile_length;
-                char *input = (char*)WavFile_Data;
-                Serial.println("Sending image to Google Drive.");
-                Serial.println("Size: " + String(WavLen) + "byte");
+                char *inputWav = (char*)WavFile_Data;
+                Serial.println("WavFile Size: " + String(WavLen) + "byte");
 
-                String url = "/macros/s/" + String(scriptID) + "/exec?folder=" + String(folder);
+                String urlWav = "/macros/s/" + String(scriptID1) + "/exec?folder=" + String(folder);
 
-                client.println("POST " + url + " HTTP/1.1");
+                client.println("POST " + urlWav + " HTTP/1.1");
                 client.println("Host: " + String(host));
                 client.println("Transfer-Encoding: chunked");
                 client.println();
 
-                int chunkSize = 200; // must be multiple of 3
-                int chunkBase64Size = base64_enc_len(chunkSize);
-                char output[chunkBase64Size + 1];
+                int chunkWavSize = 3 * 100; // must be multiple of 3
+                int chunkWavBase64Size = base64_enc_len(chunkWavSize);
+                char outputWav[chunkWavBase64Size + 1];
+                int Wavsegment = WavLen / chunkWavSize / 10;
                 
                 long int TransTime_pre = millis();
-                Serial.println();
-                int chunk = 0;
-                for (int i = 0; i < WavLen; i += chunkSize)
+                Serial.println("Uploading...");
+                int chunkWav = 0;
+                int percentWav = 0;
+                for (int i = 0; i < WavLen; i += chunkWavSize)
                 {
-                    int l = base64_encode(output, input, min(WavLen - i, chunkSize));
+                    int l = base64_encode(outputWav, inputWav, min(WavLen - i, chunkWavSize));
+                    String temp = "\r\n" + String(outputWav) + "\r\n";
                     client.print(l, HEX);
-                    String temp = "\r\n" + String(output) + "\r\n";
                     client.print(temp);
-                    //delay(100);
-                    input += chunkSize;
-                    Serial.print(".");
-                    chunk++;
-                    if (chunk % 50 == 0)
+                    inputWav += chunkWavSize;
+                    if (chunkWav % Wavsegment == 0)
                     {
-                        Serial.println();
+                        Serial.println("Upload " + String(percentWav) + "[%]");         
+                        if(percentWav<90)
+                        {
+                            percentWav += 10;
+                        }               
                     }
+                    chunkWav++;
                 }
                 client.print("0\r\n");
                 client.print("\r\n");
+                Serial.println("Upload 100[%]");    
+
                 long int TransTime_new = millis();
-                Serial.print("HTTP Send data time : ");
-                Serial.print(TransTime_new - TransTime_pre);
-                Serial.println("[ms]");
+                Serial.println("HTTP Send data time : " + String(TransTime_new - TransTime_pre) + "[ms]");
                 Serial.println("Waiting for response.");
                 long int StartTime = millis();
                 while (!client.available())
@@ -514,15 +538,99 @@ void Save_Google_Drive(void)
                 {
                     Serial.print(char(client.read()));
                 }
+                Serial.println("/*********************************************************************************************/");
             }
             else
             {
                 Serial.println("Connected to " + String(host) + " failed.");             
             }
             client.stop();
+            delay(1000);
+
+            if(client.connectSSL(host, port))
+            { 
+                Serial.println("/************************************ Flow File Upload ***************************************/");
+                int FlowLen = Shared_Ptr->Flow_Data_Length;
+                String inputFlowtemp;
+                for(uint16_t i = 0; i<FlowLen; i++)
+                {
+                    inputFlowtemp += String(Flow_Data[i]) + "\n";
+                }
+                char* inputFlow = &*inputFlowtemp.begin();
+                FlowLen = strlen(inputFlow);
+
+                Serial.println("Flow File Size: " + String(FlowLen) + "byte");
+
+                String urlFlow = "/macros/s/" + String(scriptID2) + "/exec?folder=" + String(folder);
+
+                client.println("POST " + urlFlow + " HTTP/1.1");
+                client.println("Host: " + String(host));
+                client.println("Transfer-Encoding: chunked");
+                client.println();
+
+                int chunkFlowSize = 3 * 100; // must be multiple of 3
+                int chunkFlowBase64Size = base64_enc_len(chunkFlowSize);
+                char outputFlow[chunkFlowBase64Size + 1];
+                int Flowsegment = FlowLen / chunkFlowSize / 10;
+                
+                long int TransTimeFlow_pre = millis();
+                Serial.println("Uploading...");
+                int chunkFlow = 0;
+                int percentFlow = 0;
+                for (int i = 0; i < FlowLen; i += chunkFlowSize)
+                {
+                    int l = base64_encode(outputFlow, inputFlow, min(FlowLen - i, chunkFlowSize));
+                    String temp = "\r\n" + String(outputFlow) + "\r\n";
+                    client.print(l, HEX);
+                    client.print(temp);                    
+                    inputFlow += chunkFlowSize;
+                    if (chunkFlow % Flowsegment == 0)
+                    {
+                        Serial.println("Upload " + String(percentFlow) + "[%]");         
+                        if(percentFlow<90)
+                        {
+                            percentFlow += 10;
+                        }               
+                    }
+                    chunkFlow++;
+                    delay(100);
+                }
+                client.print("0\r\n");
+                client.print("\r\n");
+                Serial.println("Upload 100[%]");      
+
+                long int TransTimeFlow_new = millis();
+                Serial.println("HTTP Send data time : " + String(TransTimeFlow_new - TransTimeFlow_pre) + "[ms]");
+                Serial.println("Waiting for response.");
+                long int StartTimeFlow = millis();
+                while (!client.available())
+                {
+                    Serial.print(".");
+                    delay(100);
+                    if ((StartTimeFlow + waitingTime * 1000) < millis())
+                    {
+                        Serial.println();
+                        Serial.println("No response.");
+                        break;
+                    }
+                }
+                Serial.println();
+                while (client.available())
+                {
+                    Serial.print(char(client.read()));
+                }
+                Serial.println("/*********************************************************************************************/");
+            }        
+            else
+            {
+                Serial.println("Connected to " + String(host) + " failed.");             
+            }
+            client.stop();
+            WiFi.end();
             Sound_Record_Step = SOUND_RECORD_INIT;
             Shared_Ptr->M7_status = SOUND_RECORD_INIT;
         }
+
         break;
     }
 }
@@ -567,7 +675,13 @@ String urlencode(String str)
 
 #ifdef CORE_CM4 // Start M4 programming
 
+#include "SDRAM.h"
+
 #define SFM3000_I2C_ADDRESS         (0x40)
+
+SDRAMClass mySDRAM;
+uint8_t *WavFile_Data;
+uint16_t *Flow_Data;
 
 static struct shared_data * const Shared_Ptr = (struct shared_data *)SRAM4_START_ADDRESS;
 
@@ -575,6 +689,7 @@ void setup()
 {    
     uint8_t tx_buf[2] = {0x10,0x00};
     MX_I2C3_Init();
+    SD_Ram_Init();
     delay(100);
     HAL_I2C_Master_Transmit(&hi2c3,SFM3000_I2C_ADDRESS<<1,tx_buf,2,10);
 }
@@ -583,6 +698,13 @@ void loop()
 {
     SFM3000_Read_Data();
     delay(SFM3000_SAMPLING_TIME);
+}
+
+void SD_Ram_Init(void)
+{
+    mySDRAM.begin(SDRAM_START_ADDRESS);
+    WavFile_Data = (uint8_t *)mySDRAM.malloc(6 * 1024 * 1024);
+    Flow_Data = (uint16_t *)mySDRAM.malloc(1 * 1024 * 1024);
 }
 
 void SFM3000_Read_Data(void)
@@ -599,7 +721,7 @@ void SFM3000_Read_Data(void)
         Shared_Ptr->M4_Semapore = 0;
         if(Shared_Ptr->M7_status)
         {
-            Shared_Ptr->Flow_Data[Shared_Ptr->Flow_Data_Length] = Shared_Ptr->Flow_Raw_Data;
+            Flow_Data[Shared_Ptr->Flow_Data_Length] = Shared_Ptr->Flow_Raw_Data;
             Shared_Ptr->Flow_Data_Length++;
         }    
     }
